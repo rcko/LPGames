@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LP Games — Follow the Money &amp; Revolving Door</title>
+<meta name="description" content="A small collection of one-more-go arcade games about public money, power, and where trust leaks out. Follow the Money and Revolving Door — playable in any browser." />
+<meta name="color-scheme" content="dark" />
+<meta property="og:title" content="LP Games" />
+<meta property="og:description" content="Quick browser games about public money and the revolving door. Keep the taxpayer dollar honest." />
+<meta property="og:type" content="website" />
+<style>
+  :root{
+    --field:#06101A;
+    --ink-2:#0E2233;
+    --paper:#EAF1F5;
+    --paper-dim:#9DB2C0;
+    --gold:#F5C542;
+    --gold-deep:#C9971F;
+    --red:#E4573D;
+    --green:#3DDC91;
+    --sky:#7FD3FF;
+    --line:rgba(157,178,192,.16);
+    --card:rgba(14,34,51,.72);
+    --card-brd:rgba(157,178,192,.22);
+    --radius:16px;
+    --shadow:0 18px 50px rgba(0,0,0,.45);
+    --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"Cascadia Code","SFMono-Regular","Segoe UI Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:var(--font);
+    color:var(--paper);
+    background:
+      radial-gradient(1200px 700px at 15% -10%, rgba(245,197,66,.10), transparent 60%),
+      radial-gradient(1000px 700px at 100% 0%, rgba(127,211,255,.08), transparent 55%),
+      var(--field);
+    min-height:100vh;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:clamp(28px,6vw,72px) clamp(18px,5vw,28px) 64px}
+
+  header.hero{margin-bottom:clamp(28px,5vw,48px)}
+  .kicker{
+    display:inline-flex;align-items:center;gap:8px;
+    font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--gold);
+    padding:7px 12px;border:1px solid var(--card-brd);border-radius:999px;
+    background:rgba(245,197,66,.06);
+  }
+  .kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 12px var(--gold)}
+  h1{
+    font-size:clamp(34px,7vw,60px);line-height:1.02;margin:18px 0 0;
+    letter-spacing:-.02em;font-weight:800;
+  }
+  h1 .amp{color:var(--paper-dim);font-weight:500}
+  .lede{
+    margin:16px 0 0;max-width:60ch;
+    font-size:clamp(15px,2.2vw,18px);color:var(--paper-dim);
+  }
+
+  section.series{margin-top:clamp(30px,5vw,46px)}
+  .series-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .series-head h2{
+    font-size:clamp(13px,2vw,15px);margin:0;
+    font-family:var(--mono);font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  }
+  .series-head .note{color:var(--paper-dim);font-size:13px}
+  .series.money .series-head h2{color:var(--gold)}
+  .series.door .series-head h2{color:var(--sky)}
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media (max-width:640px){.grid{grid-template-columns:1fr}}
+
+  a.card{
+    display:flex;flex-direction:column;gap:10px;
+    text-decoration:none;color:inherit;
+    background:var(--card);
+    border:1px solid var(--card-brd);border-radius:var(--radius);
+    padding:20px 20px 18px;
+    position:relative;overflow:hidden;
+    transition:transform .16s ease, border-color .16s ease, background .16s ease;
+    backdrop-filter:blur(6px);
+  }
+  a.card::before{
+    content:"";position:absolute;inset:0 auto 0 0;width:3px;
+    background:var(--accent, var(--gold));opacity:.85;
+  }
+  .series.door a.card{--accent:var(--sky)}
+  .series.money a.card{--accent:var(--gold)}
+  a.card:hover{transform:translateY(-3px);border-color:var(--accent);background:rgba(14,34,51,.9)}
+  a.card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+  .card-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .card h3{margin:0;font-size:20px;font-weight:700;letter-spacing:-.01em}
+  .verb{
+    font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--accent, var(--gold));white-space:nowrap;
+    padding:5px 9px;border:1px solid var(--card-brd);border-radius:999px;
+  }
+  .card p{margin:0;color:var(--paper-dim);font-size:14px}
+  .play{
+    margin-top:auto;padding-top:6px;
+    display:inline-flex;align-items:center;gap:7px;
+    font-weight:600;font-size:14px;color:var(--paper);
+  }
+  .play .arrow{transition:transform .16s ease}
+  a.card:hover .play .arrow{transform:translateX(4px)}
+  .play .arrow{color:var(--accent, var(--gold))}
+
+  footer{
+    margin-top:clamp(40px,7vw,64px);padding-top:22px;border-top:1px solid var(--line);
+    color:var(--paper-dim);font-size:13px;
+    display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  }
+  footer a{color:var(--paper);text-decoration:none;border-bottom:1px solid var(--card-brd)}
+  footer a:hover{border-color:var(--gold)}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <span class="kicker"><span class="dot"></span> Playable in your browser</span>
+      <h1>LP&nbsp;Games</h1>
+      <p class="lede">Four quick, one-more-go arcade games about public money, power, and where trust leaks out. No install, no sign-up — just tap and play.</p>
+    </header>
+
+    <section class="series money">
+      <div class="series-head">
+        <h2>Follow the Money</h2>
+        <span class="note">Keep the taxpayer dollar honest.</span>
+      </div>
+      <div class="grid">
+        <a class="card" href="./audit-the-ledger/">
+          <div class="card-top">
+            <h3>Audit the Ledger</h3>
+            <span class="verb">Scan &amp; flag</span>
+          </div>
+          <p>Scan each page of the ledger and flag the skims before the audit window closes. How much of every $100 reaches public infrastructure?</p>
+          <span class="play">Play <span class="arrow">→</span></span>
+        </a>
+        <a class="card" href="./tug-of-the-dollar/">
+          <div class="card-top">
+            <h3>Tug of the Dollar</h3>
+            <span class="verb">Rapid-tap</span>
+          </div>
+          <p>Rapid-tap to haul a taxpayer dollar toward public infrastructure and throw off the skimming grabs. How much can you keep out of the skim?</p>
+          <span class="play">Play <span class="arrow">→</span></span>
+        </a>
+      </div>
+    </section>
+
+    <section class="series door">
+      <div class="series-head">
+        <h2>Revolving Door</h2>
+        <span class="note">Hold the line on public trust.</span>
+      </div>
+      <div class="grid">
+        <a class="card" href="./musical-chairs/">
+          <div class="card-top">
+            <h3>Musical Chairs</h3>
+            <span class="verb">Tap to stop</span>
+          </div>
+          <p>The posts keep spinning past. Stop the wheel on the Cooling-Off seat — not another revolving-door job. How much public trust can you hold?</p>
+          <span class="play">Play <span class="arrow">→</span></span>
+        </a>
+        <a class="card" href="./sort-the-suits/">
+          <div class="card-top">
+            <h3>Sort the Suits</h3>
+            <span class="verb">Sort &amp; file</span>
+          </div>
+          <p>Figures step out of the revolving door one by one. File each through the right door before they slip out to the street.</p>
+          <span class="play">Play <span class="arrow">→</span></span>
+        </a>
+      </div>
+    </section>
+
+    <footer>
+      <span>Built for the browser · hosted on GitHub Pages</span>
+      <a href="https://github.com/rcko/LPGames">Source on GitHub</a>
+    </footer>
+  </div>
+</body>
+</html>
