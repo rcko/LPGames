@@ -1,0 +1,1593 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="description" content="Revolving Door — Sort the Suits. Figures step out of the revolving door one after another. File each one through the right door before they slip out to the street. How much public trust can you keep in order?" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#0E1C20" />
+<title>Revolving Door — Sort the Suits</title>
+<style>
+/* ============================================================================
+   REVOLVING DOOR — SORT THE SUITS  (self-contained static build)
+   No build step, no dependencies, no external network calls.
+   Mechanic: DRAG a figure into the matching door under time pressure
+             (NOT steer-to-dodge, NOT tap-routing — a distinct motor verb).
+   Art direction: after-hours government lobby, marble + brass, a literal
+                  revolving door churning figures out one by one.
+   Single committed dark theme. Colour is always backed by icon + label + side.
+   ========================================================================== */
+:root{
+  --ink:#0E1C20;            /* field — dark teal-slate lobby */
+  --ink-2:#12262B;          /* raised surface */
+  --paper:#EAF3F4;          /* text on dark */
+  --paper-dim:#93AAB0;      /* muted text */
+  --brass:#D9B25A;          /* the revolving door / primary accent */
+  --brass-lite:#F1D68C;
+  --brass-deep:#A8842F;
+  --public:#4FA8E8;         /* Public Service sector — civic blue */
+  --public-deep:#2E6FA8;
+  --private:#EFA23C;        /* Private Sector / Lobbyist — amber */
+  --private-deep:#B9701A;
+  --red:#E4573D;            /* misfile / alert */
+  --red-deep:#8F2C1C;
+  --good:#5AD1A0;           /* streak / positive */
+  --good-deep:#1C7A54;
+  --line:rgba(147,170,176,.16);
+  --card:rgba(18,38,43,.86);
+  --card-brd:rgba(147,170,176,.22);
+  --focus:#7FD3FF;
+  --radius:16px;
+  --shadow:0 18px 50px rgba(0,0,0,.45);
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","SFMono-Regular","Segoe UI Mono",Menlo,Consolas,monospace;
+}
+/* high-contrast toggle overrides */
+html[data-contrast="on"]{
+  --ink:#04100F; --paper:#FFFFFF; --paper-dim:#CBDBDD;
+  --public:#7FC2FF; --private:#FFC066;
+  --line:rgba(205,225,225,.30); --card:rgba(4,16,15,.94); --card-brd:rgba(205,225,225,.45);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+html{background:#050d0c}
+body{
+  font-family:var(--font); color:var(--paper);
+  background:radial-gradient(120% 80% at 50% -10%, #16302f 0%, #0a1a1a 45%, #050e0d 100%);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow:hidden; overscroll-behavior:none;
+}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- Stage: centered vertical play strip, framed on wide screens ---------- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#field{
+  position:relative; width:min(100vw,560px); height:100dvh; height:100vh;
+  overflow:hidden; box-shadow:0 0 0 1px var(--line), 0 30px 90px rgba(0,0,0,.55);
+  background:var(--ink);
+}
+@media (min-width:600px){ #field{border-radius:22px; height:min(100dvh,940px); height:min(100vh,940px)} }
+canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* ---- HUD ------------------------------------------------------------------ */
+#hud{position:absolute;left:0;right:0;top:0;padding:14px 16px calc(14px);
+  display:none; flex-direction:column; gap:10px; pointer-events:none; z-index:6}
+#hud.show{display:flex}
+.hud-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.level-pill{font:600 12px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--paper-dim);background:rgba(8,20,20,.6);border:1px solid var(--line);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px)}
+.streak-pill{font:700 12px/1 var(--mono);letter-spacing:.04em;color:var(--good);
+  background:rgba(90,209,160,.1);border:1px solid rgba(90,209,160,.4);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px);
+  opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease}
+.streak-pill.show{opacity:1;transform:none}
+.meter-wrap{flex:1}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.meter-label{font:600 11px/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--paper-dim)}
+.meter-val{font:700 15px/1 var(--mono);color:var(--brass-lite)}
+.meter-val small{color:var(--paper-dim);font-weight:600}
+.meter-bar{height:9px;border-radius:999px;background:rgba(8,20,20,.7);border:1px solid var(--line);overflow:hidden}
+.meter-fill{height:100%;width:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--brass-deep),var(--brass));
+  box-shadow:0 0 14px rgba(217,178,90,.5);transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.meter-fill.flash{background:linear-gradient(90deg,var(--red-deep),var(--red))}
+.progress-line{height:3px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.progress-inner{height:100%;width:0;background:var(--paper-dim);opacity:.6;transition:width .2s linear}
+
+/* ---- Top-right toggles ---------------------------------------------------- */
+#toggles{position:absolute;top:12px;right:12px;display:flex;gap:8px;z-index:8}
+.toggle{width:38px;height:38px;border-radius:11px;border:1px solid var(--card-brd);
+  background:rgba(8,20,20,.66);color:var(--paper-dim);cursor:pointer;display:grid;place-items:center;
+  backdrop-filter:blur(8px);transition:transform .12s ease,color .12s ease,border-color .12s}
+.toggle:hover{transform:translateY(-1px);color:var(--paper)}
+.toggle[aria-pressed="true"]{color:var(--brass);border-color:rgba(217,178,90,.5)}
+.toggle svg{width:18px;height:18px;display:block}
+.toggle:focus-visible,button:focus-visible,a.btn:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ---- Screens (DOM overlay for accessibility) ------------------------------ */
+.screen{position:absolute;inset:0;z-index:7;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:26px 22px;gap:18px;
+  overflow-y:auto;
+  background:radial-gradient(120% 70% at 50% 0%, rgba(14,28,32,.55), rgba(5,14,13,.86) 70%);
+  backdrop-filter:blur(3px)}
+.screen.show{display:flex;animation:fadeIn .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--card-brd);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:24px 22px;display:flex;flex-direction:column;gap:16px}
+.eyebrow{font:700 12px/1 var(--font);letter-spacing:.16em;text-transform:uppercase;color:var(--brass)}
+h1.title{font:800 clamp(30px,8vw,44px)/1.02 var(--font);letter-spacing:-.02em;margin:0}
+h1.title .accent{color:var(--brass)}
+.subtitle{font:700 13px/1 var(--font);letter-spacing:.22em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:9px}
+.subtitle::before,.subtitle::after{content:"";height:1px;flex:1;background:var(--line)}
+h2{font:800 clamp(22px,6vw,30px)/1.05 var(--font);letter-spacing:-.01em;margin:0}
+p{margin:0;color:var(--paper-dim);font-size:15px;line-height:1.55}
+p.lead{color:var(--paper);font-size:16px}
+.attributed{font-size:13px;line-height:1.5;color:var(--paper-dim);
+  border-left:3px solid var(--brass);padding:10px 0 10px 13px;background:rgba(217,178,90,.05);border-radius:0 8px 8px 0}
+.attributed .src{display:block;margin-top:6px;color:#7c9298;font-size:12px}
+.pending{color:var(--brass);font-weight:700;font-variant:small-caps;letter-spacing:.02em}
+
+/* buttons */
+.btn{appearance:none;border:0;cursor:pointer;font:700 16px/1 var(--font);letter-spacing:.01em;
+  padding:15px 20px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  text-decoration:none;transition:transform .12s cubic-bezier(.2,.8,.2,1),box-shadow .12s,filter .12s;width:100%}
+.btn:active{transform:translateY(1px) scale(.995)}
+.btn-primary{background:linear-gradient(180deg,var(--brass-lite),var(--brass));color:#2a2208;
+  box-shadow:0 10px 26px rgba(217,178,90,.34),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(217,178,90,.42),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--paper);border:1px solid var(--card-brd)}
+.btn-ghost:hover{background:rgba(255,255,255,.09);transform:translateY(-1px)}
+.btn-green{background:linear-gradient(180deg,#6ff0bd,var(--good));color:#04231a;box-shadow:0 10px 26px rgba(90,209,160,.3)}
+.btn-row{display:flex;gap:10px}
+.btn-row .btn{width:auto;flex:1}
+.btnset{display:flex;flex-direction:column;gap:10px}
+
+.controls-hint{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;color:var(--paper-dim);font-size:13px;align-items:center}
+.key{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:7px;
+  border:1px solid var(--card-brd);background:rgba(255,255,255,.05);font:700 13px/1 var(--mono);color:var(--paper)}
+
+/* how-to legend */
+.legend{display:flex;flex-direction:column;gap:12px}
+.legend-item{display:flex;align-items:center;gap:13px}
+.chip{width:46px;height:46px;border-radius:12px;flex:0 0 auto;display:grid;place-items:center}
+.chip svg{width:26px;height:26px;display:block}
+.chip.public{background:linear-gradient(180deg,#67b6ee,var(--public));color:#04223a}
+.chip.private{background:linear-gradient(180deg,#f4b45f,var(--private));color:#3a2404}
+.chip.revolve{background:conic-gradient(from 210deg,var(--public),var(--private),var(--public));color:#04223a}
+.legend-item div p{font-size:13px}
+.legend-item strong{color:var(--paper);font-size:14px}
+
+/* results */
+.result-score{text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.result-score .big{font:800 clamp(46px,15vw,72px)/1 var(--mono);color:var(--brass-lite);letter-spacing:-.02em}
+.result-score .of{font-size:14px;color:var(--paper-dim);letter-spacing:.02em}
+.result-verdict{font:700 17px/1.3 var(--font);text-align:center}
+.result-stats{display:flex;gap:10px;justify-content:center}
+.stat{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:11px;padding:11px 8px;text-align:center}
+.stat b{display:block;font:800 20px/1 var(--mono);color:var(--paper)}
+.stat span{font-size:11px;color:var(--paper-dim);letter-spacing:.04em;text-transform:uppercase}
+
+/* form */
+form{display:flex;flex-direction:column;gap:13px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font:600 13px/1 var(--font);color:var(--paper);letter-spacing:.01em}
+.field input{font:500 16px/1 var(--font);padding:13px 13px;border-radius:11px;color:var(--paper);
+  background:rgba(8,20,20,.7);border:1px solid var(--card-brd);width:100%}
+.field input::placeholder{color:#6a8288}
+.field.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field.two .field{gap:6px}
+.err{color:#ff9d8a;font-size:12px;min-height:0}
+.field input[aria-invalid="true"]{border-color:var(--red)}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--paper-dim);line-height:1.4}
+.consent input{margin-top:2px;width:18px;height:18px;flex:0 0 auto;accent-color:var(--brass)}
+.consent a{color:var(--brass)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* leaderboard */
+.lb{width:100%;display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto}
+.lb-row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;
+  padding:11px 12px;border-radius:11px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.lb-row .rank{font:800 14px/1 var(--mono);color:var(--paper-dim);text-align:center}
+.lb-row .who{font-weight:600;font-size:14px}
+.lb-row .who small{display:block;color:var(--paper-dim);font-weight:500;font-size:12px}
+.lb-row .sc{font:800 16px/1 var(--mono);color:var(--brass-lite)}
+.lb-row.me{background:rgba(217,178,90,.1);border-color:rgba(217,178,90,.45)}
+.lb-empty{color:var(--paper-dim);font-size:14px;text-align:center;padding:18px}
+
+/* footer / legal chrome */
+#footer{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  display:none;background:linear-gradient(0deg,rgba(4,12,11,.94),rgba(4,12,11,0));
+  font-size:10.5px;line-height:1.4;color:#6c8288;text-align:center}
+#footer.show{display:block}
+#footer .auth{color:#8ba1a7;font-weight:600}
+#footer a{color:#8ba1a7}
+.legal-block{font-size:11.5px;color:var(--paper-dim);line-height:1.5;background:rgba(0,0,0,.2);
+  border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.legal-block strong{color:var(--paper)}
+
+/* misc */
+.mini{font-size:12px;color:var(--paper-dim);text-align:center}
+
+/* loading */
+#screen-loading{background:var(--ink)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:20px}
+.loader-door{width:72px;height:72px;position:relative;animation:spin 2.6s linear infinite}
+.loader-door::before{content:"";position:absolute;inset:0;border-radius:50%;
+  border:3px solid rgba(217,178,90,.28)}
+.loader-door span{position:absolute;left:50%;top:50%;width:3px;height:34px;margin:-34px 0 0 -1.5px;
+  transform-origin:bottom center;background:linear-gradient(180deg,var(--brass),var(--brass-deep));border-radius:3px}
+.loader-door span:nth-child(2){transform:rotate(90deg)}
+.loader-door span:nth-child(3){transform:rotate(180deg)}
+.loader-door span:nth-child(4){transform:rotate(270deg)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-bar{width:180px;height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.loader-bar i{display:block;height:100%;width:0;background:var(--brass);border-radius:999px;transition:width .2s linear}
+.loader-txt{font:600 12px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-dim)}
+
+@media (prefers-reduced-motion:reduce){
+  .screen.show{animation:none}
+  .loader-door{animation:none}
+}
+html[data-motion="off"] .loader-door{animation:none}
+html[data-motion="off"] .screen.show{animation:none}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="field">
+    <canvas id="game" aria-hidden="true"></canvas>
+
+    <!-- Live region for screen-reader game state -->
+    <div id="live" class="sr-only" aria-live="polite" role="status"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-row">
+        <span class="level-pill" id="hud-level">The Lobby</span>
+        <span class="streak-pill" id="hud-streak">IN ORDER ×0</span>
+      </div>
+      <div class="hud-row">
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="meter-label">Public trust held</span>
+            <span class="meter-val" id="hud-trust">100<small>/100</small></span>
+          </div>
+          <div class="meter-bar"><div class="meter-fill" id="hud-fill"></div></div>
+        </div>
+      </div>
+      <div class="progress-line"><div class="progress-inner" id="hud-progress"></div></div>
+    </div>
+
+    <!-- Toggles -->
+    <div id="toggles">
+      <button class="toggle" id="t-sound" aria-pressed="false" title="Sound (off)" aria-label="Toggle sound"></button>
+      <button class="toggle" id="t-motion" aria-pressed="false" title="Reduce motion" aria-label="Toggle reduced motion"></button>
+      <button class="toggle" id="t-contrast" aria-pressed="false" title="High contrast" aria-label="Toggle high contrast"></button>
+      <button class="toggle" id="t-pause" title="Pause" aria-label="Pause game" style="display:none"></button>
+    </div>
+
+    <!-- LOADING -->
+    <section id="screen-loading" class="screen show" aria-label="Loading">
+      <div class="loader">
+        <div class="loader-door" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="loader-bar"><i id="load-bar"></i></div>
+        <div class="loader-txt">Opening the doors…</div>
+      </div>
+    </section>
+
+    <!-- TITLE -->
+    <section id="screen-title" class="screen" aria-label="Start screen">
+      <div class="card">
+        <span class="eyebrow">An accountability mini-game</span>
+        <h1 class="title">The Revolving <span class="accent">Door</span></h1>
+        <div class="subtitle">Sort the Suits</div>
+        <p class="lead" id="framing-fact"></p>
+        <p id="framing-plan" style="font-size:13px"></p>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-play">Play — work the door</button>
+          <button class="btn btn-ghost" id="btn-how">How to play</button>
+        </div>
+        <div class="controls-hint">
+          <span>Drag each figure into the right door</span>
+          <span><span class="key">◀</span> <span class="key">▶</span> to file the nearest</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section id="screen-howto" class="screen" aria-label="How to play">
+      <div class="card">
+        <span class="eyebrow">How to play</span>
+        <h2>Read the badge. Pick the door.</h2>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="chip public" id="lg-public"></div>
+            <div><strong>Public Service — the left door</strong><p>A civic-blue pass. Genuine public roles belong here.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip private" id="lg-private"></div>
+            <div><strong>Private Sector — the right door</strong><p>An amber pass. Lobbyists and industry go this way.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip revolve" id="lg-revolve"></div>
+            <div><strong>Some keep switching sides</strong><p>A revolver flips its pass mid-stride. File it on the side it's showing.</p></div>
+          </div>
+        </div>
+        <p class="mini">Let one <strong style="color:var(--paper)">slip out to the street</strong> unsorted, or misfile it, and public trust takes the hit.</p>
+        <button class="btn btn-primary" id="btn-how-start">Take the desk</button>
+      </div>
+    </section>
+
+    <!-- TRANSITION -->
+    <section id="screen-transition" class="screen" aria-label="Next level">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow" id="tr-eyebrow">Level 2</span>
+        <h2 id="tr-name">Peak Hour</h2>
+        <p id="tr-desc"></p>
+        <div class="result-score" style="margin:2px 0">
+          <span class="of">Public trust still held</span>
+          <span class="big" id="tr-carry" style="font-size:clamp(30px,10vw,44px)">100</span>
+        </div>
+        <button class="btn btn-primary" id="btn-transition">Back to the desk</button>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="screen-pause" class="screen" aria-label="Paused">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow">Paused</span>
+        <h2>Hold the queue</h2>
+        <div class="btnset" style="max-width:280px">
+          <button class="btn btn-primary" id="btn-resume">Resume</button>
+          <button class="btn btn-ghost" id="btn-restart">Restart shift</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="screen-results" class="screen" aria-label="Results">
+      <div class="card">
+        <span class="eyebrow" id="res-eyebrow">Shift over</span>
+        <div class="result-score">
+          <span class="big" id="res-score">0</span>
+          <span class="of">of 100 public trust held</span>
+        </div>
+        <p class="result-verdict" id="res-verdict"></p>
+        <div class="result-stats">
+          <div class="stat"><b id="res-sorted">0</b><span>Filed right</span></div>
+          <div class="stat"><b id="res-best">0</b><span>Best streak</span></div>
+          <div class="stat"><b id="res-slip">0</b><span>Slipped / misfiled</span></div>
+        </div>
+        <div class="attributed" id="res-citation"></div>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-leaderboard">Add my score to the board</button>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="btn-share">Share</button>
+            <button class="btn btn-ghost" id="btn-replay">Play again</button>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy" href="#" target="_blank" rel="noopener">Our integrity plan</a>
+          </div>
+        </div>
+        <div class="legal-block" id="res-disclaimer"></div>
+      </div>
+    </section>
+
+    <!-- FORM -->
+    <section id="screen-form" class="screen" aria-label="Join the leaderboard">
+      <div class="card">
+        <span class="eyebrow">Add your score</span>
+        <h2>Join the board</h2>
+        <p style="font-size:13px">Your score will show as first name + postcode. <span id="form-privacy"></span></p>
+        <form id="lead-form" novalidate autocomplete="on">
+          <div class="field two">
+            <div class="field">
+              <label for="f-first">First name</label>
+              <input id="f-first" name="fname" autocomplete="given-name" maxlength="40" inputmode="text" />
+              <span class="err" id="e-first"></span>
+            </div>
+            <div class="field">
+              <label for="f-last">Last name</label>
+              <input id="f-last" name="lname" autocomplete="family-name" maxlength="40" />
+              <span class="err" id="e-last"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-email">Email</label>
+            <input id="f-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="120" />
+            <span class="err" id="e-email"></span>
+          </div>
+          <div class="field">
+            <label for="f-postcode">Postcode</label>
+            <input id="f-postcode" name="postcode" inputmode="numeric" maxlength="4" pattern="\d{4}" />
+            <span class="err" id="e-postcode"></span>
+          </div>
+          <!-- honeypot -->
+          <div class="hp" aria-hidden="true"><label>Website<input id="f-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <label class="consent">
+            <input type="checkbox" id="f-consent" />
+            <span id="consent-label"></span>
+          </label>
+          <span class="err" id="e-consent"></span>
+          <button class="btn btn-primary" type="submit" id="btn-submit">Submit &amp; see the board</button>
+          <button class="btn btn-ghost" type="button" id="btn-skip">Skip — just show the board</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="screen-leaderboard" class="screen" aria-label="Leaderboard">
+      <div class="card">
+        <span class="eyebrow">Leaderboard</span>
+        <h2>Who kept the most order</h2>
+        <div class="lb" id="lb-list"></div>
+        <p class="mini" id="lb-note"></p>
+        <div class="btnset">
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate2" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy2" href="#" target="_blank" rel="noopener">Our integrity plan</a>
+          </div>
+          <button class="btn btn-ghost" id="btn-replay2">Play again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER: legal chrome -->
+    <footer id="footer">
+      <div class="auth" id="foot-auth"></div>
+      <div id="foot-disclaimer"></div>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+/* ============================================================================
+   1) CONTENT  —  SINGLE SOURCE OF TRUTH FOR EVERY FACTUAL CLAIM
+   --------------------------------------------------------------------------
+   >>> LEGAL / COMMS REVIEW HAPPENS HERE. <<<
+   Everything with any factual weight is in this one object. Figures ship as
+   clearly-marked placeholders until legal supplies signed-off wording.
+
+   Guardrails (this game is MORE sensitive than the money games, because the
+   verb involves sorting *people* — so the guardrails are stricter):
+     - Figures are FACELESS silhouettes. No portrait, name, or caricature of
+       any real, identifiable person — ever.
+     - Roles are GENERIC ARCHETYPES drawn only from the lists below. They name
+       a *kind of job*, never a person or a specific real appointment.
+     - The two doors sort a *sector pass*, not a moral judgement of anyone.
+       "Conflict" / "revolving" refers to the movement between roles, an
+       abstract pattern — not an accusation against an individual.
+     - No real company, union, or organisation is named or depicted.
+     - Every displayed figure/number shows its source in the same view.
+     - No depiction of violence, corruption-as-crime, or exploitation.
+   ========================================================================== */
+const CONTENT = {
+  // Framing (title screen). The "fact" line is attributed, not asserted.
+  framingFact:
+    "A parliamentary inquiry has heard concerns about the “revolving door” — " +
+    "officials moving between public roles and the industries they once oversaw.",
+  framingPlan:
+    "[POLICY HOOK PENDING] — the Liberal Party’s plan for real cooling-off " +
+    "periods and a public conflict-of-interest register.",
+
+  // Approved GENERIC role archetypes. NO real people / appointments.
+  roles: {
+    public:  ["Career Public Servant","Department Officer","Frontline Caseworker",
+              "Independent Regulator","Public Auditor","Local Councillor",
+              "Policy Adviser","Ombudsman’s Office"],
+    private: ["Industry Lobbyist","Corporate Consultant","Private Contractor",
+              "Peak-Body Director","Developer’s Agent","Government-Relations Adviser",
+              "Communications Strategist","Investment Manager"],
+  },
+
+  // Door labels (also drawn on the doors).
+  doorLabels: { public:"Public Service", private:"Private Sector" },
+
+  // Levels
+  levels: {
+    l1: { name:"The Lobby",  desc:"One at a time. Read the pass, file them through the matching door." },
+    l2: { name:"Peak Hour",  desc:"They come faster — and some keep flipping their pass mid-stride." },
+    bonus: { name:"How It’s Supposed to Work", desc:"Proper cooling-off, no conflicts. A steady, orderly flow." },
+  },
+
+  // Headline attributed statistic on the results screen.
+  // NOTHING here is asserted as the party's own finding.
+  citation: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",   // e.g. "dozens of senior officials"
+    framing: "have moved from public office into lobbying or industry roles in " +
+             "recent years — movement that current rules do little to slow.",
+    source:  "[SOURCE PENDING]",                   // e.g. "named register / outlet / inquiry"
+    date:    "[DATE OF CITED SOURCE PENDING]",
+    signoff: "PENDING",                            // -> reviewer name + date at the gate
+  },
+
+  // Conflicts-of-interest disclaimer (distinct from the money games' disclaimers).
+  disclaimer:
+    "This game depicts a generic sorting process using faceless figures and " +
+    "generic job titles. It does not depict, name, or refer to any real person, " +
+    "company, union, or organisation. The concerns referred to are attributed to " +
+    "their sources and are matters of public debate.",
+
+  // Electoral authorisation line — legally required for electoral matter.
+  authorisation: "Authorised by [NAME PENDING], [PARTY & ADDRESS PENDING].",
+
+  // Lead-capture collection statement (privacy).
+  privacy:
+    "We collect your details to contact you about this campaign. You can opt out " +
+    "any time. See our [collection statement — LINK PENDING].",
+  consentLabel:
+    "I agree to be contacted and to the collection statement above. [WORDING PENDING LEGAL SIGN-OFF]",
+
+  // CTAs — placeholder hrefs, clearly not live.
+  donateUrl: "#donate-url-pending",
+  policyUrl: "#integrity-policy-url-pending",
+
+  // Share text (neutral).
+  shareText: (score) =>
+    `I kept ${score}/100 public trust in order in "The Revolving Door — Sort the Suits". Can you work the door better?`,
+};
+
+/* ============================================================================
+   2) THEME + SMALL HELPERS
+   ========================================================================== */
+const COL = {
+  ink:"#0E1C20", paper:"#EAF3F4", dim:"#93AAB0",
+  brass:"#D9B25A", brassLite:"#F1D68C", brassDeep:"#A8842F",
+  public:"#4FA8E8", publicDeep:"#2E6FA8",
+  private:"#EFA23C", privateDeep:"#B9701A",
+  red:"#E4573D", redDeep:"#8F2C1C", good:"#5AD1A0", goodDeep:"#1C7A54",
+  silhouette:"#20343A", silhouetteLite:"#2C464E",
+};
+const sectorColor = s => s==="public" ? COL.public : COL.private;
+const sectorDeep  = s => s==="public" ? COL.publicDeep : COL.privateDeep;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const choice=a=>a[Math.floor(Math.random()*a.length)];
+const easeOutCubic=t=>1-Math.pow(1-t,3);
+const easeInCubic=t=>t*t*t;
+const $=id=>document.getElementById(id);
+
+/* ============================================================================
+   3) PERSISTENT SETTINGS (sound / motion / contrast)
+   ========================================================================== */
+const store = {
+  get(k,d){ try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d} },
+  set(k,v){ try{localStorage.setItem(k,JSON.stringify(v))}catch{} },
+};
+const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const settings = {
+  sound:    store.get("rd_sound", false),
+  motion:   store.get("rd_motion", prefersReducedMotion ? "off" : "on"),
+  contrast: store.get("rd_contrast", false),
+};
+const motionOn = () => settings.motion === "on";
+
+/* ============================================================================
+   4) AUDIO — WebAudio, muted by default, lazy-init on first gesture.
+   Every cue has a redundant visual, so sound-off loses no information.
+   ========================================================================== */
+const Sound = (()=>{
+  let ctx=null, master=null, ready=false;
+  function init(){
+    if(ready) return;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=.5; master.connect(ctx.destination); ready=true;
+    }catch{}
+  }
+  function tone(freq,dur,type="sine",vol=.3,slideTo=null){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime;
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1,slideTo),t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.01);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.02);
+  }
+  return {
+    init,
+    grab(){ tone(300,.05,"triangle",.05,420) },                                   // pick up a figure
+    correct(s){ const base=s==="public"?560:500; tone(base,.08,"sine",.14,base*1.5); setTimeout(()=>tone(base*1.5,.1,"sine",.1),45) },
+    wrong(){ tone(190,.2,"sawtooth",.16,90) },                                     // misfiled
+    slip(){ tone(150,.28,"sine",.15,70) },                                         // slipped to the street
+    flip(){ tone(440,.06,"square",.05,660); setTimeout(()=>tone(660,.06,"square",.045,440),60) }, // revolver flips
+    level(){ tone(392,.12,"sine",.14,588); setTimeout(()=>tone(588,.18,"sine",.12),90) },
+    win(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.35,"sine",.14),i*90)) },
+    lose(){ tone(200,.5,"sine",.14,90) },
+  };
+})();
+
+/* ============================================================================
+   5) CANVAS + RESPONSIVE SCALER
+   ========================================================================== */
+const canvas=$("game"), ctx=canvas.getContext("2d");
+let W=0,H=0,DPR=1;
+function resize(){
+  W=Math.max(1,canvas.clientWidth); H=Math.max(1,canvas.clientHeight);
+  DPR=Math.min(window.devicePixelRatio||1, 2.5);
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+/* Layout anchors (fractions of the field), resolved live so it adapts to any size. */
+const spawnY   = ()=>H*0.155;   // figures step out here, just under the revolving door
+const streetY  = ()=>H*0.845;   // cross this unsorted -> slipped out to the street
+const doorTopY = ()=>H*0.66;    // top of the drop doors
+const doorCX   = s => s==="public" ? W*0.205 : W*0.795;   // door centre x
+const doorCY   = ()=>H*0.775;   // door centre y
+const laneMin  = ()=>W*0.30, laneMax=()=>W*0.70;          // descent band (centre chute)
+
+/* ============================================================================
+   6) PARTICLES + FLOATING TEXT (pooled)
+   ========================================================================== */
+const particles=[]; const POOL_MAX=440;
+function spawnParticles(x,y,color,count,opts={}){
+  if(!motionOn()) count=Math.min(count,4);
+  for(let i=0;i<count;i++){
+    if(particles.length>=POOL_MAX) break;
+    const a=opts.angle!=null?opts.angle+rand(-.6,.6):rand(0,Math.PI*2);
+    const sp=rand(opts.spMin??40,opts.spMax??220);
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp - (opts.lift||0),
+      life:rand(.4,.9),max:.9,size:rand(1.6,4.2),color,g:opts.g??140});
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.life-=dt; if(p.life<=0){particles.splice(i,1);continue}
+    p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.98;
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha=clamp(p.life/p.max,0,1); ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+const floaters=[];
+function spawnFloater(x,y,text,color){ floaters.push({x,y,text,color,life:1.1,max:1.1}); }
+function updateFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=34*dt; if(f.life<=0) floaters.splice(i,1); }
+}
+function drawFloaters(){
+  ctx.textAlign="center"; ctx.font="800 16px "+getMono();
+  for(const f of floaters){
+    ctx.globalAlpha=clamp(f.life/f.max,0,1);
+    ctx.fillStyle="rgba(0,0,0,.5)"; ctx.fillText(f.text,f.x+1,f.y+1);
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+function getMono(){ return 'ui-monospace,"Cascadia Code",Menlo,Consolas,monospace'; }
+function getSans(){ return 'ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'; }
+
+/* ============================================================================
+   7) LEVEL DATA (difficulty is data-driven & provable from these numbers)
+   --------------------------------------------------------------------------
+   count       : figures spawned this level
+   fuse        : seconds from step-out to the street (bigger = more time)
+   fuseRamp    : fraction the fuse shortens across the level (speed-up)
+   spawnEvery  : base seconds between step-outs
+   spawnRamp   : fraction spawn gap shrinks across the level (more volume)
+   maxOn       : max figures on the floor at once (throttle)
+   revolver    : probability a figure is a side-flipping "revolver"
+   ========================================================================== */
+const LEVELS = [
+  { key:"l1", ...CONTENT.levels.l1, count:14, fuse:6.2, fuseRamp:.28, spawnEvery:1.55, spawnRamp:.34, maxOn:3, revolver:0    },
+  { key:"l2", ...CONTENT.levels.l2, count:20, fuse:4.1, fuseRamp:.34, spawnEvery:0.98, spawnRamp:.40, maxOn:5, revolver:0.42 },
+];
+const BONUS = { key:"bonus", ...CONTENT.levels.bonus, count:8, fuse:7.2, fuseRamp:0, spawnEvery:1.5, spawnRamp:0, maxOn:2, revolver:0 };
+
+/* Scoring constants (see routeSorted / slip). Perfect play holds at 100. */
+const SCORE = { misfile:6, slip:9, reformEvery:5, reformAmt:2 };
+
+/* ============================================================================
+   8) GAME STATE
+   ========================================================================== */
+let figures=[];           // everyone currently on the floor
+let fkey=0;
+
+const game = {
+  state:"loading",        // loading|title|howto|playing|bonus|transition|pause|results|form|leaderboard
+  levelIdx:0,
+  trust:100,              // the surviving public trust (= score); continuous across levels
+  streak:0, bestStreak:0, sortedRight:0, slipMisfile:0,
+  spawnedThisLevel:0, resolvedThisLevel:0,
+  spawnTimer:0, elapsed:0,
+  doorPop:{public:0, private:0},   // door "swallow" pulse per side
+  doorHover:null,                  // which door the held figure is aimed at
+  doorRot:0, moteT:0,
+  shake:0, hitstop:0, timeScale:1, flash:0, flashCol:COL.red, confetti:0,
+  lastPlayerId:null, _pendingLevel:null, _resumeState:null,
+};
+function levelDef(){ return LEVELS[game.levelIdx] || LEVELS[0]; }
+function activeDef(){ return game.state==="bonus" ? BONUS : levelDef(); }
+
+/* ---- Screen (DOM) management --------------------------------------------- */
+const SCREENS=["loading","title","howto","transition","pause","results","form","leaderboard"];
+function showScreen(name){ for(const s of SCREENS){ $("screen-"+s).classList.toggle("show", s===name); } }
+function hideAllScreens(){ for(const s of SCREENS) $("screen-"+s).classList.remove("show"); }
+function setHUD(on){ $("hud").classList.toggle("show", on); $("t-pause").style.display=on?"grid":"none"; }
+function setFooter(on){ $("footer").classList.toggle("show", on); }
+function say(msg){ $("live").textContent=msg; }
+
+/* ============================================================================
+   9) FIGURES — spawn + the "which door is correct" ground truth
+   --------------------------------------------------------------------------
+   A figure's CORRECT door is always the sector on the pass it is showing NOW
+   (f.sector). A revolver flips f.sector on a timer, with a telegraphed spin,
+   so the ground truth is honest and always legible — the challenge is timing,
+   not a trick.
+   ========================================================================== */
+function figScale(){ return clamp(W/560, .82, 1.25); }
+function figHalfW(){ return 34*figScale(); }   // grab / collision half-width
+function figHalfH(){ return 46*figScale(); }
+
+function newSector(){ return Math.random()<.5 ? "public" : "private"; }
+function roleLabelFor(s){ return choice(CONTENT.roles[s]); }
+
+function spawnFigure(L){
+  const sector=newSector();
+  const isRev = Math.random() < (L.revolver||0);
+  const p = clamp(game.resolvedThisLevel/Math.max(1,L.count), 0, 1);   // level progress
+  const fuse = L.fuse*(1 - (L.fuseRamp||0)*p);
+  const travel = streetY()-spawnY();
+  figures.push({
+    key:fkey++,
+    sector,
+    role: roleLabelFor(sector),
+    revolver:isRev,
+    x: rand(laneMin(), laneMax()),
+    y: spawnY()-figHalfH()*0.4,
+    baseDescent: travel/Math.max(.5,fuse),   // px/sec so it reaches the street exactly on fuse
+    sway: rand(0,Math.PI*2), swaySpeed: rand(.7,1.3), swayAmp: rand(6,16),
+    bob: rand(0,Math.PI*2),
+    enterT: 0,                 // step-out animation 0..1
+    grabbed:false, dragMoved:0, flickVx:0, flickVy:0,
+    flipTimer: rand(1.6,2.6), flipAnim:0, flipDir:1,
+    resolved:false, result:null, sortedTo:null,
+    sortAnim:0, sx:0, sy:0,    // fly-to-door animation origin
+    escapeAnim:0,
+  });
+}
+
+/* the figure the keyboard / autopilot acts on: the un-grabbed, unresolved
+   figure closest to the street (largest y) — i.e. the most urgent. */
+function focusFigure(){
+  let best=null;
+  for(const f of figures){
+    if(f.resolved||f.grabbed) continue;
+    if(!best || f.y>best.y) best=f;
+  }
+  return best;
+}
+
+/* ============================================================================
+   10) FLOW / STATE TRANSITIONS
+   ========================================================================== */
+function goTitle(){
+  game.state="title"; hideAllScreens(); showScreen("title"); setHUD(false); setFooter(true);
+  figures.length=0;
+}
+function goHowTo(){ game.state="howto"; showScreen("howto"); setFooter(false); }
+
+function startRun(){
+  game.trust=100; game.levelIdx=0; game.lastPlayerId=null;
+  game.streak=0; game.bestStreak=0; game.sortedRight=0; game.slipMisfile=0;
+  releaseGrab(true);
+  beginLevel(0);
+}
+function beginLevel(idx){
+  resize();                                   // guarantee fresh geometry before any figure spawns
+  game.levelIdx=idx; const L=LEVELS[idx];
+  figures.length=0; particles.length=0; floaters.length=0;
+  game.spawnedThisLevel=0; game.resolvedThisLevel=0; game.spawnTimer=0; game.elapsed=0; game.timeScale=1;
+  game.state="playing"; hideAllScreens(); setHUD(true); setFooter(false);
+  $("hud-level").textContent=L.name;
+  updateStreakHUD(); updateHUD();
+  say(`${L.name}. Drag each figure into the door that matches its pass.`);
+  Sound.level();
+}
+function endLevel(){
+  const next=game.levelIdx+1;
+  if(next<LEVELS.length){ showTransition(next); } else { beginBonus(); }
+}
+function showTransition(nextIdx){
+  game.state="transition"; setHUD(false); hideAllScreens(); showScreen("transition");
+  const L=LEVELS[nextIdx];
+  $("tr-eyebrow").textContent="Level "+(nextIdx+1);
+  $("tr-name").textContent=L.name; $("tr-desc").textContent=L.desc;
+  $("tr-carry").textContent=Math.round(game.trust);
+  game._pendingLevel=nextIdx;
+  say(`${L.name}. ${Math.round(game.trust)} of 100 public trust still held.`);
+}
+function beginBonus(){
+  resize();
+  game.state="bonus"; hideAllScreens(); setHUD(true); setFooter(false);
+  figures.length=0; particles.length=0; floaters.length=0;
+  game.spawnedThisLevel=0; game.resolvedThisLevel=0; game.spawnTimer=0; game.elapsed=0; game.timeScale=1;
+  $("hud-level").textContent=BONUS.name; updateStreakHUD(); updateHUD();
+  say(`${BONUS.name}. A calm, orderly flow — file them as they come.`);
+  Sound.level();
+}
+function finish(){
+  releaseGrab(true);
+  game.state="results"; setHUD(false); setFooter(true); hideAllScreens();
+  renderResults(); showScreen("results");
+  if(game.trust>=70){ Sound.win(); game.confetti=motionOn()?2.2:0; } else Sound.lose();
+}
+
+/* ============================================================================
+   11) INPUT — DRAG a figure into a door. Also full keyboard play.
+   ========================================================================== */
+let activePointerId=null;
+let grabbed=null;
+let lastMove={x:0,y:0,t:0};
+
+function pointerPos(e){
+  const r=canvas.getBoundingClientRect();
+  return { x:clamp((e.clientX)-r.left,0,W), y:clamp((e.clientY)-r.top,0,H) };
+}
+function figureAt(x,y){
+  // topmost (most urgent / largest y) figure under the point, within a forgiving box
+  let best=null;
+  const hw=figHalfW()+8, hh=figHalfH()+10;
+  for(const f of figures){
+    if(f.resolved) continue;
+    if(Math.abs(x-f.x)<=hw && Math.abs(y-f.y)<=hh){ if(!best||f.y>best.y) best=f; }
+  }
+  return best;
+}
+function onDown(e){
+  Sound.init();
+  if(game.state!=="playing" && game.state!=="bonus") return;
+  if(activePointerId!==null) return;             // single active drag
+  const p=pointerPos(e);
+  const f=figureAt(p.x,p.y);
+  if(!f) return;
+  activePointerId=e.pointerId;
+  grabbed=f; f.grabbed=true; f.dragMoved=0; f.flickVx=0; f.flickVy=0;
+  f.grabDX=f.x-p.x; f.grabDY=f.y-p.y;            // keep the grab point steady
+  lastMove={x:p.x,y:p.y,t:performance.now()};
+  game.doorHover=null;
+  try{ canvas.setPointerCapture(e.pointerId); }catch{}
+  Sound.grab();
+  e.preventDefault();
+}
+function onMove(e){
+  if(e.pointerId!==activePointerId || !grabbed) return;
+  const p=pointerPos(e);
+  const nx=clamp(p.x+grabbed.grabDX, figHalfW(), W-figHalfW());
+  const ny=clamp(p.y+grabbed.grabDY, spawnY()*0.4, H-figHalfH()*0.5);
+  grabbed.dragMoved += Math.hypot(nx-grabbed.x, ny-grabbed.y);
+  // velocity estimate for flick (EMA)
+  const now=performance.now(), dt=Math.max(1,(now-lastMove.t))/1000;
+  grabbed.flickVx = lerp(grabbed.flickVx, (p.x-lastMove.x)/dt, .5);
+  grabbed.flickVy = lerp(grabbed.flickVy, (p.y-lastMove.y)/dt, .5);
+  lastMove={x:p.x,y:p.y,t:now};
+  grabbed.x=nx; grabbed.y=ny;
+  // live door-hover feedback
+  game.doorHover = grabbed.dragMoved>10 ? aimForRelease(grabbed,false) : null;
+  e.preventDefault();
+}
+function onUp(e){
+  if(e.pointerId!==activePointerId) return;
+  const f=grabbed; activePointerId=null; grabbed=null; game.doorHover=null;
+  try{ canvas.releasePointerCapture(e.pointerId); }catch{}
+  if(!f) return;
+  f.grabbed=false;
+  const target=aimForRelease(f,true);
+  if(target) commitSort(f,target);
+  // else: dropped in the neutral middle — it just carries on descending
+  if(e.cancelable) e.preventDefault();
+}
+/* decide the drop door from a released figure: door zone, or a strong flick */
+function aimForRelease(f, allowFlick){
+  if(allowFlick && Math.abs(f.flickVx)>950 && Math.abs(f.flickVx)>Math.abs(f.flickVy)*1.05 && f.dragMoved>14){
+    return f.flickVx<0 ? "public" : "private";
+  }
+  if(f.dragMoved>14 && f.y>H*0.5){
+    if(f.x < W*0.42) return "public";
+    if(f.x > W*0.58) return "private";
+  }
+  return null;
+}
+function releaseGrab(silent){
+  if(grabbed){ grabbed.grabbed=false; }
+  grabbed=null; activePointerId=null; game.doorHover=null;
+}
+
+canvas.addEventListener("pointerdown",onDown);
+canvas.addEventListener("pointermove",onMove);
+canvas.addEventListener("pointerup",onUp);
+canvas.addEventListener("pointercancel",onUp);
+
+/* keyboard: file the most-urgent figure. Fully playable without a pointer. */
+window.addEventListener("keydown",e=>{
+  Sound.init();
+  const k=e.key;
+  if(["ArrowLeft","ArrowRight","a","A","d","D"," "].includes(k)) e.preventDefault();
+  if(k==="Escape"){ if(game.state==="playing"||game.state==="bonus") pauseGame(); else if(game.state==="pause") resumeGame(); return; }
+  if(k==="Enter"){
+    if(game.state==="title"){ startRun(); return; }
+    if(game.state==="transition"){ $("btn-transition").click(); return; }
+  }
+  if(game.state==="playing"||game.state==="bonus"){
+    if(k==="ArrowLeft"||k==="a"||k==="A"||k==="1") sortFocused("public");
+    else if(k==="ArrowRight"||k==="d"||k==="D"||k==="2") sortFocused("private");
+  }
+});
+function sortFocused(sector){
+  const f=focusFigure(); if(!f) return;
+  commitSort(f,sector);
+}
+
+function pauseGame(){ if(game.state!=="playing"&&game.state!=="bonus")return; releaseGrab(true); game._resumeState=game.state; game.state="pause"; setHUD(false); showScreen("pause"); }
+function resumeGame(){ if(game.state!=="pause")return; game.state=game._resumeState||"playing"; hideAllScreens(); setHUD(true); }
+
+/* ============================================================================
+   12) UPDATE
+   ========================================================================== */
+function update(dt){
+  const active = game.state==="playing"||game.state==="bonus";
+  game.doorRot += dt*(active?0.6:0.25);
+  updateParticles(dt); updateFloaters(dt);
+  if(game.shake>0) game.shake=Math.max(0,game.shake-dt*3.2);
+  if(game.flash>0) game.flash=Math.max(0,game.flash-dt*2.4);
+  game.doorPop.public=Math.max(0,game.doorPop.public-dt*3);
+  game.doorPop.private=Math.max(0,game.doorPop.private-dt*3);
+  if(game.confetti>0){ game.confetti-=dt; if(motionOn()&&Math.random()<.5) spawnParticles(rand(0,W),-6,choice([COL.brass,COL.public,COL.private]),1,{g:120,spMin:20,spMax:60,lift:-40}); }
+  // ambient dust
+  game.moteT-=dt;
+  if(active && game.moteT<=0 && motionOn()){ spawnParticles(rand(0,W), rand(H*0.2,H*0.7), "rgba(217,178,90,.18)",1,{g:-6,spMin:2,spMax:10,lift:8}); game.moteT=.18; }
+
+  if(active) updatePlay(dt, active);
+}
+
+function updatePlay(dt){
+  const L=activeDef();
+
+  // spawn on a shrinking cadence, throttled by maxOn
+  const onFloor = figures.filter(f=>!f.resolved).length;
+  if(game.spawnedThisLevel < L.count){
+    game.spawnTimer -= dt;
+    const p=clamp(game.resolvedThisLevel/Math.max(1,L.count),0,1);
+    const gap=L.spawnEvery*(1-(L.spawnRamp||0)*p);
+    if(game.spawnTimer<=0 && onFloor < L.maxOn){
+      spawnFigure(L); game.spawnedThisLevel++; game.spawnTimer=gap;
+    }
+  }
+
+  const sY=streetY();
+  for(let i=figures.length-1;i>=0;i--){
+    const f=figures[i];
+    f.enterT=Math.min(1,f.enterT+dt*3.2);
+    f.bob+=dt*4; f.sway+=dt*f.swaySpeed;
+
+    if(f.resolved){
+      // fly-to-door or slip-through cosmetic animation, then remove
+      if(f.result==="escaped"){
+        f.escapeAnim+=dt*1.8;
+        f.y+=dt*90;
+        if(f.escapeAnim>=1) figures.splice(i,1);
+      } else {
+        f.sortAnim+=dt*3.4;
+        const t=easeInCubic(clamp(f.sortAnim,0,1));
+        f.x=lerp(f.sx, doorCX(f.sortedTo), t);
+        f.y=lerp(f.sy, doorCY(), t);
+        if(f.sortAnim>=1) figures.splice(i,1);
+      }
+      continue;
+    }
+
+    // revolver: flip its pass on a timer, telegraphed by a spin animation
+    if(f.revolver && !f.grabbed){
+      f.flipTimer-=dt;
+      if(f.flipTimer<=0){ f.flipAnim=1; f.flipTimer=rand(1.9,2.8); Sound.flip(); }
+    }
+    if(f.flipAnim>0){
+      const prev=f.flipAnim; f.flipAnim=Math.max(0,f.flipAnim-dt*3);
+      if(prev>0.5 && f.flipAnim<=0.5){ f.sector = f.sector==="public"?"private":"public"; f.role=roleLabelFor(f.sector); }
+    }
+
+    if(!f.grabbed){
+      const p=clamp(game.resolvedThisLevel/Math.max(1,L.count),0,1);
+      const speed=f.baseDescent*(1 + 0.12*p);
+      f.y += speed*dt;
+      if(f.y>=sY){ slip(f); }
+    }
+  }
+
+  if(game.trust<=0){ game.trust=0; updateHUD(); return finish(); }
+  if(game.spawnedThisLevel>=L.count && figures.length===0){
+    return game.state==="bonus" ? finish() : endLevel();   // bonus is the last stage — end the run
+  }
+  updateHUD();
+}
+
+/* ---- resolve: correct / wrong file --------------------------------------- */
+function commitSort(f, sector){
+  if(!f || f.resolved) return;
+  f.resolved=true; f.grabbed=false; f.sortedTo=sector;
+  f.sx=f.x; f.sy=f.y; f.sortAnim=0;
+  game.resolvedThisLevel++;
+  const correct = (f.sector===sector);
+  game.doorPop[sector]=1;
+  if(correct){
+    f.result="correct";
+    game.streak++; game.sortedRight++;
+    if(game.streak>game.bestStreak) game.bestStreak=game.streak;
+    game.flash=.18; game.flashCol=sectorColor(sector);
+    spawnParticles(doorCX(sector), doorCY(), sectorColor(sector), motionOn()?12:3, {spMin:40,spMax:170,lift:20});
+    Sound.correct(sector);
+    // earned upside: a run of correct files restores a little trust (a working system).
+    if(game.state!=="bonus" && game.streak>0 && game.streak%SCORE.reformEvery===0 && game.trust<100){
+      const amt=Math.min(100-game.trust, SCORE.reformAmt);
+      if(amt>0){ game.trust=Math.min(100,game.trust+amt); spawnFloater(f.x, f.y-figHalfH()-8, "REFORM +"+Math.round(amt), "#8ff0c2"); }
+    }
+    updateStreakHUD();
+    say(`Filed to ${CONTENT.doorLabels[sector]}. Correct.${game.streak>1?" Streak "+game.streak+".":""}`);
+  } else {
+    f.result="wrong"; game.slipMisfile++; game.streak=0;
+    const cut=Math.min(game.trust, SCORE.misfile);
+    game.trust=Math.max(0,game.trust-cut);
+    game.flash=.6; game.flashCol=COL.red;
+    if(motionOn()){ game.shake=Math.min(1,game.shake+.7); game.hitstop=0.05; }
+    spawnParticles(doorCX(sector), doorCY(), COL.red, motionOn()?14:3, {spMin:60,spMax:220});
+    spawnFloater(f.x, f.y-figHalfH()-8, "MISFILED −"+Math.round(cut), "#ff9d8a");
+    Sound.wrong();
+    updateStreakHUD();
+    say(`Misfiled to ${CONTENT.doorLabels[sector]}. That belonged in ${CONTENT.doorLabels[f.sector]}. ${Math.round(game.trust)} trust left.`);
+  }
+}
+function slip(f){
+  if(f.resolved) return;
+  f.resolved=true; f.result="escaped"; f.escapeAnim=0;
+  game.resolvedThisLevel++; game.slipMisfile++; game.streak=0;
+  const cut=Math.min(game.trust, SCORE.slip);
+  game.trust=Math.max(0,game.trust-cut);
+  game.flash=.55; game.flashCol=COL.red;
+  if(motionOn()){ game.shake=Math.min(1,game.shake+.6); }
+  spawnParticles(f.x, streetY(), COL.red, motionOn()?10:3, {angle:Math.PI/2, spMin:40, spMax:150, g:120});
+  spawnFloater(f.x, streetY()-14, "SLIPPED −"+Math.round(cut), "#ff9d8a");
+  Sound.slip();
+  updateStreakHUD();
+  say(`A ${f.role} slipped out to the street unsorted. ${Math.round(game.trust)} trust left.`);
+}
+
+/* ---- HUD sync ------------------------------------------------------------- */
+function updateHUD(){
+  const v=Math.round(game.trust);
+  $("hud-trust").innerHTML=`${v}<small>/100</small>`;
+  const fill=$("hud-fill"); fill.style.width=game.trust+"%";
+  fill.classList.toggle("flash", game.trust<40);
+  const L=activeDef();
+  const prog=clamp(game.resolvedThisLevel/Math.max(1,L.count),0,1);
+  $("hud-progress").style.width=(prog*100)+"%";
+}
+function updateStreakHUD(){
+  const el=$("hud-streak");
+  if(game.streak>=2){ el.textContent="IN ORDER ×"+game.streak; el.classList.add("show"); }
+  else el.classList.remove("show");
+}
+
+/* ============================================================================
+   13) RENDER
+   ========================================================================== */
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(game.shake>0 && motionOn()){ const s=game.shake*7; ctx.translate(rand(-s,s),rand(-s,s)); }
+  drawBackground();
+  const showWorld=["title","playing","bonus","transition","pause"].includes(game.state);
+  if(showWorld){
+    drawDoors();
+    drawStreet();
+    drawRevolvingDoor();
+    // figures: resolved (flying) under, then live ones, grabbed one last (on top)
+    const live=[], flying=[]; let held=null;
+    for(const f of figures){ if(f.grabbed) held=f; else if(f.resolved) flying.push(f); else live.push(f); }
+    for(const f of flying) drawFigure(f);
+    for(const f of live) drawFigure(f);
+    if(held) drawFigure(held);
+  }
+  drawParticles(); drawFloaters();
+  ctx.restore();
+  if(game.flash>0){
+    ctx.globalAlpha=game.flash*.5;
+    const g=ctx.createRadialGradient(W/2,H*0.5,H*.12,W/2,H*0.5,H*.75);
+    g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,game.flashCol);
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  }
+  drawVignette();
+}
+
+function drawBackground(){
+  const hc=settings.contrast;
+  ctx.fillStyle=hc?"#04100F":COL.ink; ctx.fillRect(0,0,W,H);
+  // marble pillars — faint vertical bands
+  ctx.save();
+  ctx.strokeStyle=hc?"rgba(205,225,225,.06)":"rgba(147,170,176,.05)"; ctx.lineWidth=1;
+  for(let x=W*0.12; x<W; x+=W*0.22){
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H*0.66); ctx.stroke();
+  }
+  // floor line
+  const fy=H*0.66;
+  const fg=ctx.createLinearGradient(0,fy,0,H);
+  fg.addColorStop(0,"rgba(255,255,255,.02)"); fg.addColorStop(1,"rgba(0,0,0,.18)");
+  ctx.fillStyle=fg; ctx.fillRect(0,fy,W,H-fy);
+  ctx.strokeStyle="rgba(147,170,176,.12)"; ctx.beginPath(); ctx.moveTo(0,fy); ctx.lineTo(W,fy); ctx.stroke();
+  ctx.restore();
+}
+
+/* the literal revolving door at top-centre — the theme's centrepiece */
+function drawRevolvingDoor(){
+  const cx=W/2, cy=H*0.115, R=Math.min(W*0.17,74);
+  ctx.save();
+  // housing arc
+  ctx.strokeStyle="rgba(217,178,90,.28)"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(cx,cy,R,Math.PI*0.08,Math.PI*0.92); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,cy,R,Math.PI*1.08,Math.PI*1.92); ctx.stroke();
+  // rotating blades
+  const rot=motionOn()?game.doorRot:0.6;
+  ctx.translate(cx,cy);
+  for(let i=0;i<4;i++){
+    const a=rot + i*Math.PI/2;
+    const ex=Math.cos(a)*R, ey=Math.sin(a)*R*0.42;   // squashed for perspective
+    const grad=ctx.createLinearGradient(0,0,ex,ey);
+    grad.addColorStop(0,"rgba(241,214,140,.15)"); grad.addColorStop(1,"rgba(217,178,90,.55)");
+    ctx.strokeStyle=grad; ctx.lineWidth=4; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ex,ey); ctx.stroke();
+  }
+  // hub
+  ctx.fillStyle=COL.brassDeep; ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle="rgba(147,170,176,.55)"; ctx.textAlign="center"; ctx.font="700 10px "+getMono();
+  ctx.fillText("THE REVOLVING DOOR", cx, cy+R*0.55+4);
+}
+
+/* the two drop doors, lower-left (public) and lower-right (private) */
+function drawDoors(){
+  drawDoor("public");
+  drawDoor("private");
+}
+function drawDoor(sector){
+  const cx=doorCX(sector), topY=doorTopY(), botY=H-6;
+  const w=W*0.30, h=botY-topY;
+  const x=cx-w/2, y=topY;
+  const col=sectorColor(sector), deep=sectorDeep(sector);
+  const hover=game.doorHover===sector;
+  const pop=game.doorPop[sector];
+  const glow=(hover?.5:.24)+pop*.5;
+  ctx.save();
+  // doorway frame
+  const r=14;
+  const grad=ctx.createLinearGradient(0,y,0,botY);
+  grad.addColorStop(0, hover?`rgba(${sector==="public"?"79,168,232":"239,162,60"},.34)`:"rgba(255,255,255,.03)");
+  grad.addColorStop(1, "rgba(0,0,0,.10)");
+  roundRectTop(x,y,w,h,r); ctx.fillStyle=grad; ctx.fill();
+  ctx.lineWidth=hover?3:2; ctx.strokeStyle=col; ctx.globalAlpha=.35+glow*.6;
+  roundRectTop(x,y,w,h,r); ctx.stroke(); ctx.globalAlpha=1;
+  // glow pool at the threshold
+  if(motionOn()){
+    const gg=ctx.createRadialGradient(cx,botY,4,cx,botY,w*0.7);
+    gg.addColorStop(0,`rgba(${sector==="public"?"79,168,232":"239,162,60"},${.18+glow*.4})`);
+    gg.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=gg; ctx.fillRect(x-10,y,w+20,h);
+  }
+  // icon + label
+  const iconY=y+h*0.30, iconS=Math.min(w*0.26,40)*(1+pop*.12);
+  drawSectorIcon(sector, cx, iconY, iconS, col);
+  ctx.fillStyle=col; ctx.textAlign="center"; ctx.font=`800 ${Math.max(11,Math.min(15,w*0.11))}px `+getSans();
+  ctx.fillText(CONTENT.doorLabels[sector].toUpperCase(), cx, y+h*0.66);
+  ctx.fillStyle="rgba(147,170,176,.7)"; ctx.font="700 9.5px "+getMono();
+  ctx.fillText(sector==="public"?"◀ LEFT":"RIGHT ▶", cx, y+h*0.66+15);
+  ctx.restore();
+}
+
+/* the street escape zone between/below the doors */
+function drawStreet(){
+  const sY=streetY(), x0=W*0.42, x1=W*0.58;
+  // nearest descending figure raises the alarm
+  let near=0;
+  for(const f of figures){ if(f.resolved||f.grabbed) continue; near=Math.max(near, clamp(1-(sY-f.y)/(H*0.22),0,1)); }
+  ctx.save();
+  ctx.setLineDash([7,7]); ctx.lineWidth=2;
+  ctx.strokeStyle=`rgba(228,87,61,${.30+near*.5})`;
+  ctx.beginPath(); ctx.moveTo(x0,sY); ctx.lineTo(x1,sY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=`rgba(228,87,61,${.45+near*.4})`; ctx.textAlign="center"; ctx.font="700 9.5px "+getMono();
+  ctx.fillText("▼ THE STREET ▼", (x0+x1)/2, sY+14);
+  ctx.restore();
+}
+
+function drawFigure(f){
+  const S=figScale();
+  let alpha=f.enterT;
+  let scale=lerp(.6,1,easeOutCubic(f.enterT));
+  if(f.grabbed) scale*=1.12;
+  if(f.resolved && f.result!=="escaped"){ const t=clamp(f.sortAnim,0,1); scale*=lerp(1,.25,t); alpha*=1-t*0.9; }
+  if(f.resolved && f.result==="escaped"){ alpha*=1-clamp(f.escapeAnim,0,1); }
+  if(alpha<=0.02) return;
+
+  const sector=f.sector, col=sectorColor(sector);
+  const x=f.x + (f.grabbed?0:Math.sin(f.sway)*f.swayAmp*0.15);
+  const bob=motionOn()?Math.sin(f.bob)*1.6:0;
+  const y=f.y+bob;
+  const bodyH=figHalfH()*2*scale, bodyW=figHalfW()*2*scale;
+  const urgent = !f.resolved && !f.grabbed && (streetY()-f.y) < H*0.16;
+
+  ctx.save();
+  ctx.globalAlpha=alpha;
+
+  // floor shadow
+  ctx.globalAlpha=alpha*0.35;
+  ctx.fillStyle="rgba(0,0,0,.5)";
+  ctx.beginPath(); ctx.ellipse(f.x, f.y+bodyH*0.5+4, bodyW*0.42, 6*S, 0,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=alpha;
+
+  // sector aura ring (the whole-figure colour cue)
+  const auraA = f.grabbed?.5 : (urgent?.4+0.25*Math.sin(performance.now()/120):.24);
+  ctx.save();
+  if(motionOn()){ ctx.shadowColor=col; ctx.shadowBlur=f.grabbed?26:16; }
+  ctx.strokeStyle=col; ctx.globalAlpha=alpha*auraA; ctx.lineWidth=3*S;
+  roundRect(x-bodyW*0.5-3, y-bodyH*0.5-3, bodyW+6, bodyH+6, 16*S); ctx.stroke();
+  ctx.restore();
+
+  // silhouette body (head + shoulders) — faceless by design
+  ctx.fillStyle=f.grabbed?COL.silhouetteLite:COL.silhouette;
+  // torso
+  const torsoTop=y-bodyH*0.12, torsoH=bodyH*0.62, torsoW=bodyW*0.9;
+  roundRect(x-torsoW*0.5, torsoTop, torsoW, torsoH, 12*S); ctx.fill();
+  // shoulders taper
+  ctx.beginPath();
+  ctx.moveTo(x-torsoW*0.5, torsoTop+8*S);
+  ctx.quadraticCurveTo(x, torsoTop-10*S, x+torsoW*0.5, torsoTop+8*S);
+  ctx.lineTo(x+torsoW*0.5, torsoTop+2*S); ctx.lineTo(x-torsoW*0.5, torsoTop+2*S); ctx.closePath(); ctx.fill();
+  // head
+  const headR=bodyW*0.26, headY=y-bodyH*0.34;
+  ctx.beginPath(); ctx.arc(x, headY, headR, 0, Math.PI*2); ctx.fill();
+  // rim light
+  ctx.strokeStyle="rgba(255,255,255,.10)"; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(x-headR*0.3, headY-headR*0.2, headR*0.85, Math.PI*0.9, Math.PI*1.5); ctx.stroke();
+
+  // chest badge (colour + icon) — with flip squash for revolvers
+  const badgeW=bodyW*0.52*(f.flipAnim>0?Math.abs(Math.cos(f.flipAnim*Math.PI)):1), badgeH=bodyH*0.26;
+  const badgeY=y+bodyH*0.10;
+  ctx.save();
+  ctx.fillStyle=col;
+  roundRect(x-badgeW*0.5, badgeY-badgeH*0.5, Math.max(2,badgeW), badgeH, 5*S); ctx.fill();
+  ctx.strokeStyle="rgba(0,0,0,.25)"; ctx.lineWidth=1; roundRect(x-badgeW*0.5, badgeY-badgeH*0.5, Math.max(2,badgeW), badgeH, 5*S); ctx.stroke();
+  if(badgeW>bodyW*0.3){
+    if(f.revolver) drawRevolverIcon(x, badgeY, badgeH*0.62, sector);
+    else drawSectorIcon(sector, x, badgeY, badgeH*0.7, sector==="public"?"#04223a":"#3a2404");
+  }
+  ctx.restore();
+
+  // role tag pill above the head — the specific (generic) job title
+  if(scale>0.7){
+    const label=f.role.toUpperCase();
+    ctx.font=`700 ${Math.round(9.5*S)}px `+getSans();
+    const tw=ctx.measureText(label).width, padX=7*S, tagW=tw+padX*2, tagH=15*S, tagY=headY-headR-tagH-3*S;
+    ctx.globalAlpha=alpha*0.96;
+    ctx.fillStyle="rgba(8,20,20,.9)";
+    roundRect(x-tagW*0.5, tagY, tagW, tagH, tagH*0.5); ctx.fill();
+    ctx.strokeStyle=col; ctx.globalAlpha=alpha*0.55; ctx.lineWidth=1; roundRect(x-tagW*0.5, tagY, tagW, tagH, tagH*0.5); ctx.stroke();
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle=COL.paper; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(label, x, tagY+tagH*0.5+0.5);
+    ctx.textBaseline="alphabetic";
+  }
+
+  // focus ring for keyboard play (only on the current most-urgent, not while dragging)
+  if(!f.grabbed && !f.resolved && !grabbed && (game.state==="playing"||game.state==="bonus") && f===focusFigure()){
+    ctx.strokeStyle="rgba(127,211,255,.8)"; ctx.setLineDash([5,5]); ctx.lineWidth=2;
+    roundRect(x-bodyW*0.5-8, y-bodyH*0.5-8, bodyW+16, bodyH+16, 18*S); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+}
+
+/* vector sector icons (distinct SHAPES => colourblind-safe, no emoji fonts) */
+function drawSectorIcon(sector, cx, cy, s, color){
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.fillStyle=color; ctx.strokeStyle=color; ctx.lineWidth=Math.max(1.4,s*0.14); ctx.lineCap="round"; ctx.lineJoin="round";
+  if(sector==="public"){
+    // classical building: pediment + columns (public institution)
+    const w=s*1.1, h=s*0.9;
+    ctx.beginPath(); ctx.moveTo(-w*0.5, -h*0.12); ctx.lineTo(0,-h*0.5); ctx.lineTo(w*0.5,-h*0.12); ctx.closePath(); ctx.fill();
+    ctx.fillRect(-w*0.5, -h*0.05, w, h*0.10);          // architrave
+    for(let i=-1;i<=1;i++){ ctx.fillRect(i*w*0.28-s*0.05, h*0.06, s*0.11, h*0.4); }  // columns
+    ctx.fillRect(-w*0.5, h*0.46, w, h*0.10);            // base
+  } else {
+    // briefcase (private sector)
+    const w=s*1.05, h=s*0.82;
+    ctx.beginPath(); roundRectPath(-w*0.5, -h*0.28, w, h*0.66, s*0.14); ctx.fill();
+    ctx.lineWidth=Math.max(1.4,s*0.13); ctx.strokeStyle=color; ctx.fillStyle="transparent";
+    ctx.beginPath(); ctx.moveTo(-s*0.22,-h*0.28); ctx.lineTo(-s*0.22,-h*0.44); ctx.lineTo(s*0.22,-h*0.44); ctx.lineTo(s*0.22,-h*0.28); ctx.stroke(); // handle
+    ctx.fillStyle=sector==="private"?COL.privateDeep:color; ctx.globalAlpha=.5;
+    ctx.fillRect(-w*0.5, -h*0.02, w, h*0.08);           // latch line
+  }
+  ctx.restore();
+}
+function drawRevolverIcon(cx, cy, s, sector){
+  // two curved arrows (a revolving pass) tinted toward the current side
+  ctx.save(); ctx.translate(cx,cy);
+  ctx.lineWidth=Math.max(1.6,s*0.2); ctx.lineCap="round";
+  ctx.strokeStyle=sector==="public"?"#04223a":"#3a2404";
+  ctx.beginPath(); ctx.arc(0,0,s*0.7,Math.PI*0.15,Math.PI*1.05); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0,0,s*0.7,Math.PI*1.15,Math.PI*2.05); ctx.stroke();
+  // arrow heads
+  const a1=Math.PI*1.05, a2=Math.PI*2.05, rr=s*0.7;
+  arrowHead(Math.cos(a1)*rr,Math.sin(a1)*rr, a1+Math.PI*0.5, s*0.28);
+  arrowHead(Math.cos(a2)*rr,Math.sin(a2)*rr, a2+Math.PI*0.5, s*0.28);
+  ctx.restore();
+}
+function arrowHead(x,y,ang,size){
+  ctx.save(); ctx.translate(x,y); ctx.rotate(ang);
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-size,-size*0.6); ctx.moveTo(0,0); ctx.lineTo(-size,size*0.6); ctx.stroke();
+  ctx.restore();
+}
+
+function drawVignette(){
+  const g=ctx.createRadialGradient(W/2,H/2,H*.35,W/2,H/2,H*.78);
+  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,.42)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+function roundRect(x,y,w,h,r){ roundRectPath(x,y,w,h,r); }
+function roundRectPath(x,y,w,h,r){ w=Math.max(0,w); h=Math.max(0,h); r=Math.max(0,Math.min(r,w/2,h/2));
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function roundRectTop(x,y,w,h,r){ w=Math.max(0,w); h=Math.max(0,h); r=Math.max(0,Math.min(r,w/2));
+  ctx.beginPath();
+  ctx.moveTo(x,y+h); ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r); ctx.lineTo(x+w,y+h); }
+
+/* ============================================================================
+   14) MAIN LOOP (fixed timestep)
+   ========================================================================== */
+new ResizeObserver(resize).observe($("field"));
+window.addEventListener("resize",resize);
+resize();
+
+let last=performance.now(), acc=0; const STEP=1/60;
+function frame(t){
+  if(canvas.clientWidth!==W||canvas.clientHeight!==H){ resize(); }
+  let dt=(t-last)/1000; last=t; if(dt>0.1)dt=0.1;
+  if(game.hitstop>0){ game.hitstop-=dt; }
+  else { acc+=dt*game.timeScale; let n=0; while(acc>=STEP && n<5){ update(STEP); acc-=STEP; n++; } if(acc>STEP*5)acc=0; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================================
+   15) RESULTS + LEADERBOARD RENDERING
+   ========================================================================== */
+function verdictFor(score){
+  if(score>=90) return "A tight ship. Almost nothing got through unsorted.";
+  if(score>=70) return "Mostly in order — but a few slipped past.";
+  if(score>=45) return "The queue got away from you more than once.";
+  if(score>0)   return "The door kept spinning faster than you could sort.";
+  return "The revolving door won. Nothing stayed in order.";
+}
+function renderResults(){
+  const score=Math.round(game.trust);
+  const el=$("res-score"); const dur=motionOn()?700:0, t0=performance.now();
+  (function tick(now){
+    const p=dur?clamp((now-t0)/dur,0,1):1;
+    el.textContent=Math.round(easeOutCubic(p)*score);
+    if(p<1) requestAnimationFrame(tick);
+  })(t0);
+  $("res-verdict").textContent=verdictFor(score);
+  $("res-sorted").textContent=game.sortedRight;
+  $("res-best").textContent=game.bestStreak;
+  $("res-slip").textContent=game.slipMisfile;
+  const c=CONTENT.citation;
+  $("res-citation").innerHTML =
+    `<span class="pending">${esc(c.figure)}</span> ${esc(c.framing)}` +
+    `<span class="src">Source: ${esc(c.source)} · ${esc(c.date)}</span>`;
+  $("res-disclaimer").innerHTML="<strong>Disclaimer.</strong> "+esc(CONTENT.disclaimer);
+  say(`Shift over. ${score} of 100 public trust held. Filed right ${game.sortedRight}, slipped or misfiled ${game.slipMisfile}.`);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---- Leaderboard store: LOCAL now, REMOTE (Cloudflare) later --------------
+   Swap point for launch: implement RemoteLeaderboard against a serverless
+   endpoint (Cloudflare Pages Function + D1) and flip USE_REMOTE. PII stays
+   server-side there; this local store keeps data on-device only (demo/fallback).
+   -------------------------------------------------------------------------- */
+const USE_REMOTE=false;
+const LocalLeaderboard={
+  KEY:"rd_sortsuits_lb_v1",
+  all(){ return store.get(this.KEY,[]) || []; },
+  async top(n=10){ return this.all().slice(0,n); },
+  async submit(entry){
+    const list=this.all();
+    const rec={ id:(performance.now()+"_"+Math.random()).toString(),
+      first:entry.first, postcode:entry.postcode, score:entry.score, ts:Date.now(),
+      // last name + email are the *private* captured fields. On-device only here;
+      // in the Cloudflare build these go server-side and never to the public board.
+      _last:entry.last, _email:entry.email };
+    list.push(rec); list.sort((a,b)=>b.score-a.score);
+    const rank=list.findIndex(r=>r.id===rec.id)+1;
+    store.set(this.KEY, list.slice(0,100));
+    return { rank, id:rec.id, total:list.length };
+  },
+};
+const Leaderboard = USE_REMOTE ? null /* RemoteLeaderboard (launch) */ : LocalLeaderboard;
+
+async function renderLeaderboard(){
+  const rows=await Leaderboard.top(10);
+  const list=$("lb-list"); list.innerHTML="";
+  if(!rows.length){ list.innerHTML='<div class="lb-empty">No scores yet — you could be first.</div>'; }
+  rows.forEach((r,i)=>{
+    const div=document.createElement("div");
+    div.className="lb-row"+(r.id===game.lastPlayerId?" me":"");
+    div.innerHTML=`<span class="rank">${i+1}</span>`+
+      `<span class="who">${esc(r.first||"Player")}<small>Postcode ${esc(r.postcode||"—")}</small></span>`+
+      `<span class="sc">${Math.round(r.score)}</span>`;
+    list.appendChild(div);
+  });
+  $("lb-note").textContent = USE_REMOTE ? "" :
+    "Scores are saved on this device (demo mode). A shared board is enabled at launch.";
+}
+
+/* ============================================================================
+   16) UI WIRING
+   ========================================================================== */
+$("framing-fact").textContent=CONTENT.framingFact;
+$("framing-plan").textContent=CONTENT.framingPlan;
+$("foot-auth").textContent=CONTENT.authorisation;
+$("foot-disclaimer").textContent=CONTENT.disclaimer;
+$("form-privacy").innerHTML=esc(CONTENT.privacy);
+$("consent-label").textContent=CONTENT.consentLabel;
+$("btn-donate").href=CONTENT.donateUrl; $("btn-donate2").href=CONTENT.donateUrl;
+$("btn-policy").href=CONTENT.policyUrl; $("btn-policy2").href=CONTENT.policyUrl;
+
+// how-to legend icons (reuse the same vector icons as the game)
+(function legendIcons(){
+  const mk=(sector)=>{ const c=document.createElement("canvas"); c.width=52;c.height=52; const g=c.getContext("2d");
+    const save=ctx; /* the icon helpers use the module ctx; draw onto a temp then blit */ return c; };
+  // simplest: render via inline SVG-ish using the same shapes on tiny canvases isn't worth it;
+  // instead stamp glyphs with the real drawer by temporarily retargeting is messy — use CSS chips + unicode fallback.
+})();
+// lightweight unicode marks inside the how-to chips (decorative; text explains meaning)
+$("lg-public").innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3 3 8v1h18V8zM5 10v7H4v2h16v-2h-1v-7h-2v7h-3v-7h-2v7H8v-7z"/></svg>';
+$("lg-private").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="8" width="18" height="11" rx="2"/><path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>';
+$("lg-revolve").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-4M4 5v4h4"/><path d="M4 13a8 8 0 0 0 14 4M20 19v-4h-4"/></svg>';
+
+$("btn-play").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-how").onclick=goHowTo;
+$("btn-how-start").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-transition").onclick=()=>{ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); };
+$("btn-resume").onclick=resumeGame;
+$("btn-restart").onclick=()=>{ hideAllScreens(); startRun(); };
+$("t-pause").onclick=()=>{ game.state==="pause"?resumeGame():pauseGame(); };
+$("btn-replay").onclick=startRun;
+$("btn-replay2").onclick=startRun;
+$("btn-leaderboard").onclick=()=>{ game.state="form"; hideAllScreens(); showScreen("form"); setFooter(false); $("f-first").focus(); };
+$("btn-skip").onclick=async()=>{ game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true); };
+
+$("btn-share").onclick=async()=>{
+  const score=Math.round(game.trust); const text=CONTENT.shareText(score);
+  const url=location.href.split("#")[0];
+  try{
+    if(navigator.share){ await navigator.share({title:"The Revolving Door — Sort the Suits",text,url}); }
+    else { await navigator.clipboard.writeText(text+" "+url); toast("Link copied"); }
+  }catch{}
+};
+
+$("lead-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const first=$("f-first").value.trim(), last=$("f-last").value.trim(),
+        email=$("f-email").value.trim(), postcode=$("f-postcode").value.trim(),
+        consent=$("f-consent").checked, hp=$("f-website").value;
+  let ok=true;
+  const setErr=(id,inp,msg)=>{ $(id).textContent=msg||""; if(inp) $(inp).setAttribute("aria-invalid", msg?"true":"false"); if(msg)ok=false; };
+  setErr("e-first","f-first", first?"":"Enter your first name");
+  setErr("e-last","f-last", last?"":"Enter your last name");
+  setErr("e-email","f-email", /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?"":"Enter a valid email");
+  setErr("e-postcode","f-postcode", /^\d{4}$/.test(postcode)?"":"Enter a 4-digit postcode");
+  setErr("e-consent",null, consent?"":"Please tick to continue");
+  if(hp) return;                    // honeypot tripped — silently drop
+  if(!ok) return;
+  const res=await Leaderboard.submit({first,last,email,postcode,score:Math.round(game.trust)});
+  game.lastPlayerId=res.id;
+  game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true);
+  say(`You ranked number ${res.rank} of ${res.total}.`);
+});
+
+function toast(msg){
+  const t=document.createElement("div"); t.textContent=msg;
+  t.style.cssText="position:absolute;left:50%;bottom:80px;transform:translateX(-50%);z-index:20;"+
+    "background:rgba(8,20,20,.95);border:1px solid var(--card-brd);color:var(--paper);"+
+    "padding:10px 16px;border-radius:10px;font:600 13px var(--font)";
+  $("field").appendChild(t); setTimeout(()=>t.remove(),1600);
+}
+
+/* ---- Toggles -------------------------------------------------------------- */
+const ICONS={
+  soundOn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"/></svg>',
+  soundOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 5m0-5-5 5"/></svg>',
+  motion:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+  contrast:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+};
+function applyToggles(){
+  document.documentElement.setAttribute("data-motion", settings.motion);
+  document.documentElement.setAttribute("data-contrast", settings.contrast?"on":"off");
+  const s=$("t-sound"); s.innerHTML=settings.sound?ICONS.soundOn:ICONS.soundOff;
+  s.setAttribute("aria-pressed",settings.sound); s.title="Sound ("+(settings.sound?"on":"off")+")";
+  const m=$("t-motion"); m.innerHTML=ICONS.motion; m.setAttribute("aria-pressed", settings.motion==="off"); m.title=(motionOn()?"Reduce motion":"Motion reduced");
+  const c=$("t-contrast"); c.innerHTML=ICONS.contrast; c.setAttribute("aria-pressed",settings.contrast); c.title="High contrast ("+(settings.contrast?"on":"off")+")";
+  $("t-pause").innerHTML=ICONS.pause;
+}
+$("t-sound").onclick=()=>{ settings.sound=!settings.sound; store.set("rd_sound",settings.sound); if(settings.sound){Sound.init();Sound.correct("public");} applyToggles(); };
+$("t-motion").onclick=()=>{ settings.motion=motionOn()?"off":"on"; store.set("rd_motion",settings.motion); applyToggles(); };
+$("t-contrast").onclick=()=>{ settings.contrast=!settings.contrast; store.set("rd_contrast",settings.contrast); applyToggles(); };
+applyToggles();
+
+/* ============================================================================
+   16b) TEST HOOK — inert in production; only active with ?debug or #debug.
+   ========================================================================== */
+if(new URLSearchParams(location.search).has("debug") || location.hash==="#debug"){
+  window.__rd = {
+    game, LEVELS, BONUS, get figures(){ return figures; },
+    step(dt=1/60){ update(dt); render(); },
+    steps(n,dt=1/60){ for(let i=0;i<n;i++){ update(dt); render(); } },
+    play(){ startRun(); },
+    focus(){ return focusFigure(); },
+    sort(sector){ sortFocused(sector); },
+    // auto-play a PERFECT run (files each figure to the door it's showing) — drives level flow.
+    autopilot(maxSteps=20000){ startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        if(game.state==="playing"||game.state==="bonus"){
+          const f=focusFigure();
+          if(f) commitSort(f, f.sector);   // f.sector is the honest current face
+          update(1/60); n++;
+        } else break;
+      }
+      return { state:game.state, score:Math.round(game.trust), sortedRight:game.sortedRight, slipMisfile:game.slipMisfile, best:game.bestStreak, steps:n }; },
+    // auto-play a WORST run (files everything to the WRONG door) — expect trust -> 0.
+    failpilot(maxSteps=20000){ startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        if(game.state==="playing"||game.state==="bonus"){
+          const f=focusFigure();
+          if(f) commitSort(f, f.sector==="public"?"private":"public");
+          update(1/60); n++;
+        } else break;
+      }
+      return { state:game.state, score:Math.round(game.trust), steps:n }; },
+    // auto-play an IDLE run (sort nothing) — everyone slips; expect trust -> 0.
+    idlepilot(maxSteps=20000){ startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        update(1/60); n++;
+        if(game.state!=="playing"&&game.state!=="bonus"&&game.state!=="transition") break;
+      }
+      return { state:game.state, score:Math.round(game.trust), steps:n }; },
+  };
+}
+
+/* ============================================================================
+   17) BOOT / LOADING
+   ========================================================================== */
+(function boot(){
+  const bar=$("load-bar"); let p=0;
+  const iv=setInterval(()=>{ p=Math.min(100,p+rand(14,30)); bar.style.width=p+"%";
+    if(p>=100){ clearInterval(iv); setTimeout(goTitle, 260); }
+  }, 130);
+})();
+</script>
+</body>
+</html>

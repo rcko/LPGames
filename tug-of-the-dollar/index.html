@@ -1,0 +1,1378 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="description" content="Follow the Money — Tug of the Dollar. Rapid-tap to haul a taxpayer dollar up toward public infrastructure and throw off the skimming grabs. How much can you keep out of the skim?" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#0B1B2B" />
+<title>Follow the Money — Tug of the Dollar</title>
+<style>
+/* ============================================================================
+   FOLLOW THE MONEY — TUG OF THE DOLLAR  (self-contained static build)
+   No build step, no dependencies, no external network calls.
+   Mechanic: force-balance tug-of-war — rapid-tap to HAUL one dollar up a cable
+   toward Public Infrastructure while skim-clamps drag it down; throw the clamps
+   off. NOT steer-to-dodge, NOT the switchboard's routing, NOT the ledger audit.
+   Art direction: forensic-accounting / ledger. Single committed dark theme.
+   Shares the sibling builds' design system, a11y toggles and legal chrome.
+   ========================================================================== */
+:root{
+  --ink:#0B1B2B;            /* field */
+  --ink-2:#0E2233;         /* raised surface */
+  --paper:#EAF1F5;         /* text on dark */
+  --paper-dim:#9DB2C0;     /* muted text */
+  --gold:#F5C542;          /* the dollar / primary accent */
+  --gold-deep:#C9971F;
+  --red:#E4573D;           /* skim / alert */
+  --red-deep:#8F2C1C;
+  --green:#3DDC91;         /* clean / infrastructure */
+  --green-deep:#1C7A54;
+  --line:rgba(157,178,192,.16);
+  --card:rgba(14,34,51,.86);
+  --card-brd:rgba(157,178,192,.22);
+  --focus:#7FD3FF;
+  --radius:16px;
+  --shadow:0 18px 50px rgba(0,0,0,.45);
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","SFMono-Regular","Segoe UI Mono",Menlo,Consolas,monospace;
+}
+/* high-contrast toggle overrides */
+html[data-contrast="on"]{
+  --ink:#04101B; --paper:#FFFFFF; --paper-dim:#C7D6E0;
+  --line:rgba(200,220,235,.30); --card:rgba(4,16,27,.94); --card-brd:rgba(200,220,235,.45);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+html{background:#06101A}
+body{
+  font-family:var(--font); color:var(--paper);
+  background:radial-gradient(120% 80% at 50% -10%, #10283b 0%, #081420 45%, #050d15 100%);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow:hidden; overscroll-behavior:none;
+}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- Stage: centered vertical play strip, framed on wide screens ---------- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#field{
+  position:relative; width:min(100vw,560px); height:100dvh; height:100vh;
+  overflow:hidden; box-shadow:0 0 0 1px var(--line), 0 30px 90px rgba(0,0,0,.55);
+  background:var(--ink);
+}
+@media (min-width:600px){ #field{border-radius:22px; height:min(100dvh,940px); height:min(100vh,940px)} }
+canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* ---- HUD ------------------------------------------------------------------ */
+#hud{position:absolute;left:0;right:0;top:0;padding:14px 16px calc(14px);
+  display:none; flex-direction:column; gap:10px; pointer-events:none; z-index:6}
+#hud.show{display:flex}
+.hud-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.level-pill{font:600 12px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--paper-dim);background:rgba(8,20,32,.6);border:1px solid var(--line);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px)}
+.streak-pill{font:700 12px/1 var(--mono);letter-spacing:.04em;color:var(--gold);
+  background:rgba(245,197,66,.1);border:1px solid rgba(245,197,66,.4);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px);
+  opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease}
+.streak-pill.show{opacity:1;transform:none}
+.meter-wrap{flex:1}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.meter-label{font:600 11px/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--paper-dim)}
+.meter-val{font:700 15px/1 var(--mono);color:var(--gold)}
+.meter-val small{color:var(--paper-dim);font-weight:600}
+.meter-bar{height:9px;border-radius:999px;background:rgba(8,20,32,.7);border:1px solid var(--line);overflow:hidden}
+.meter-fill{height:100%;width:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--gold-deep),var(--gold));
+  box-shadow:0 0 14px rgba(245,197,66,.5);transition:width .18s cubic-bezier(.2,.8,.2,1)}
+.meter-fill.flash{background:linear-gradient(90deg,var(--red-deep),var(--red))}
+.progress-line{height:3px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.progress-inner{height:100%;width:0;background:var(--paper-dim);opacity:.6;transition:width .2s linear}
+
+/* ---- Top-right toggles ---------------------------------------------------- */
+#toggles{position:absolute;top:12px;right:12px;display:flex;gap:8px;z-index:8}
+.toggle{width:38px;height:38px;border-radius:11px;border:1px solid var(--card-brd);
+  background:rgba(8,20,32,.66);color:var(--paper-dim);cursor:pointer;display:grid;place-items:center;
+  backdrop-filter:blur(8px);transition:transform .12s ease,color .12s ease,border-color .12s}
+.toggle:hover{transform:translateY(-1px);color:var(--paper)}
+.toggle[aria-pressed="true"]{color:var(--gold);border-color:rgba(245,197,66,.5)}
+.toggle svg{width:18px;height:18px;display:block}
+.toggle:focus-visible,button:focus-visible,a.btn:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ---- Screens (DOM overlay for accessibility) ------------------------------ */
+.screen{position:absolute;inset:0;z-index:7;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:26px 22px;gap:18px;
+  overflow-y:auto;
+  background:radial-gradient(120% 70% at 50% 0%, rgba(11,27,43,.55), rgba(5,13,21,.86) 70%);
+  backdrop-filter:blur(3px)}
+.screen.show{display:flex;animation:fadeIn .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--card-brd);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:24px 22px;display:flex;flex-direction:column;gap:16px}
+.eyebrow{font:700 12px/1 var(--font);letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+h1.title{font:800 clamp(30px,8vw,44px)/1.02 var(--font);letter-spacing:-.02em;margin:0}
+h1.title .accent{color:var(--gold)}
+.subtitle{font:700 13px/1 var(--font);letter-spacing:.22em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:9px}
+.subtitle::before,.subtitle::after{content:"";height:1px;flex:1;background:var(--line)}
+h2{font:800 clamp(22px,6vw,30px)/1.05 var(--font);letter-spacing:-.01em;margin:0}
+p{margin:0;color:var(--paper-dim);font-size:15px;line-height:1.55}
+p.lead{color:var(--paper);font-size:16px}
+.attributed{font-size:13px;line-height:1.5;color:var(--paper-dim);
+  border-left:3px solid var(--gold);padding:10px 0 10px 13px;background:rgba(245,197,66,.05);border-radius:0 8px 8px 0}
+.attributed .src{display:block;margin-top:6px;color:#7f94a3;font-size:12px}
+.pending{color:var(--gold);font-weight:700;font-variant:small-caps;letter-spacing:.02em}
+
+/* buttons */
+.btn{appearance:none;border:0;cursor:pointer;font:700 16px/1 var(--font);letter-spacing:.01em;
+  padding:15px 20px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  text-decoration:none;transition:transform .12s cubic-bezier(.2,.8,.2,1),box-shadow .12s,filter .12s;width:100%}
+.btn:active{transform:translateY(1px) scale(.995)}
+.btn-primary{background:linear-gradient(180deg,#ffd75e,var(--gold));color:#26200a;
+  box-shadow:0 10px 26px rgba(245,197,66,.34),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(245,197,66,.42),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--paper);border:1px solid var(--card-brd)}
+.btn-ghost:hover{background:rgba(255,255,255,.09);transform:translateY(-1px)}
+.btn-green{background:linear-gradient(180deg,#54f0a8,var(--green));color:#04231a;box-shadow:0 10px 26px rgba(61,220,145,.3)}
+.btn-row{display:flex;gap:10px}
+.btn-row .btn{width:auto;flex:1}
+.btnset{display:flex;flex-direction:column;gap:10px}
+
+.controls-hint{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;color:var(--paper-dim);font-size:13px;align-items:center}
+.key{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:7px;
+  border:1px solid var(--card-brd);background:rgba(255,255,255,.05);font:700 13px/1 var(--mono);color:var(--paper)}
+
+/* how-to legend */
+.legend{display:flex;flex-direction:column;gap:12px}
+.legend-item{display:flex;align-items:center;gap:13px}
+.chip{width:44px;height:44px;border-radius:12px;flex:0 0 auto;display:grid;place-items:center;font-weight:800;font-size:20px}
+.chip.coin{background:radial-gradient(circle at 35% 30%,#ffe89a,var(--gold) 60%,var(--gold-deep));color:#4a3a08;box-shadow:0 0 18px rgba(245,197,66,.5)}
+.chip.grab{background:linear-gradient(180deg,#b23a27,var(--red));color:#fff}
+.chip.haul{background:linear-gradient(180deg,#2bbd7c,var(--green));color:#04231a}
+.legend-item div p{font-size:13px}
+.legend-item strong{color:var(--paper);font-size:14px}
+
+/* results */
+.result-score{text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.result-score .big{font:800 clamp(46px,15vw,72px)/1 var(--mono);color:var(--gold);letter-spacing:-.02em}
+.result-score .of{font-size:14px;color:var(--paper-dim);letter-spacing:.02em}
+.result-verdict{font:700 17px/1.3 var(--font);text-align:center}
+.result-stats{display:flex;gap:10px;justify-content:center}
+.stat{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:11px;padding:11px 8px;text-align:center}
+.stat b{display:block;font:800 20px/1 var(--mono);color:var(--paper)}
+.stat span{font-size:11px;color:var(--paper-dim);letter-spacing:.04em;text-transform:uppercase}
+
+/* form */
+form{display:flex;flex-direction:column;gap:13px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font:600 13px/1 var(--font);color:var(--paper);letter-spacing:.01em}
+.field input{font:500 16px/1 var(--font);padding:13px 13px;border-radius:11px;color:var(--paper);
+  background:rgba(8,20,32,.7);border:1px solid var(--card-brd);width:100%}
+.field input::placeholder{color:#6d8494}
+.field.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field.two .field{gap:6px}
+.err{color:#ff9d8a;font-size:12px;min-height:0}
+.field input[aria-invalid="true"]{border-color:var(--red)}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--paper-dim);line-height:1.4}
+.consent input{margin-top:2px;width:18px;height:18px;flex:0 0 auto;accent-color:var(--gold)}
+.consent a{color:var(--gold)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* leaderboard */
+.lb{width:100%;display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto}
+.lb-row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;
+  padding:11px 12px;border-radius:11px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.lb-row .rank{font:800 14px/1 var(--mono);color:var(--paper-dim);text-align:center}
+.lb-row .who{font-weight:600;font-size:14px}
+.lb-row .who small{display:block;color:var(--paper-dim);font-weight:500;font-size:12px}
+.lb-row .sc{font:800 16px/1 var(--mono);color:var(--gold)}
+.lb-row.me{background:rgba(245,197,66,.1);border-color:rgba(245,197,66,.45)}
+.lb-empty{color:var(--paper-dim);font-size:14px;text-align:center;padding:18px}
+
+/* footer / legal chrome */
+#footer{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  display:none;background:linear-gradient(0deg,rgba(4,12,20,.94),rgba(4,12,20,0));
+  font-size:10.5px;line-height:1.4;color:#6f8494;text-align:center}
+#footer.show{display:block}
+#footer .auth{color:#8ea3b2;font-weight:600}
+#footer a{color:#8ea3b2}
+.legal-block{font-size:11.5px;color:var(--paper-dim);line-height:1.5;background:rgba(0,0,0,.2);
+  border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.legal-block strong{color:var(--paper)}
+
+/* misc */
+.mini{font-size:12px;color:var(--paper-dim);text-align:center}
+
+/* loading */
+#screen-loading{background:var(--ink)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:20px}
+.loader-coin{width:64px;height:64px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffe89a,var(--gold) 55%,var(--gold-deep));
+  box-shadow:0 0 40px rgba(245,197,66,.6);display:grid;place-items:center;
+  font:800 30px/1 var(--font);color:#4a3a08;animation:bob 1.4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(-6px) rotate(-4deg)}50%{transform:translateY(6px) rotate(4deg)}}
+.loader-bar{width:180px;height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.loader-bar i{display:block;height:100%;width:0;background:var(--gold);border-radius:999px;transition:width .2s linear}
+.loader-txt{font:600 12px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-dim)}
+
+@media (prefers-reduced-motion:reduce){
+  .screen.show{animation:none}
+  .loader-coin{animation:none}
+}
+html[data-motion="off"] .loader-coin{animation:none}
+html[data-motion="off"] .screen.show{animation:none}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="field">
+    <canvas id="game" aria-hidden="true"></canvas>
+
+    <!-- Live region for screen-reader game state -->
+    <div id="live" class="sr-only" aria-live="polite" role="status"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-row">
+        <span class="level-pill" id="hud-level">The Tender Process</span>
+        <span class="streak-pill" id="hud-streak">THROWN ×0</span>
+      </div>
+      <div class="hud-row">
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="meter-label">Held from the skim</span>
+            <span class="meter-val" id="hud-money">$100<small>/100</small></span>
+          </div>
+          <div class="meter-bar"><div class="meter-fill" id="hud-fill"></div></div>
+        </div>
+      </div>
+      <div class="progress-line"><div class="progress-inner" id="hud-progress"></div></div>
+    </div>
+
+    <!-- Toggles -->
+    <div id="toggles">
+      <button class="toggle" id="t-sound" aria-pressed="false" title="Sound (off)" aria-label="Toggle sound"></button>
+      <button class="toggle" id="t-motion" aria-pressed="false" title="Reduce motion" aria-label="Toggle reduced motion"></button>
+      <button class="toggle" id="t-contrast" aria-pressed="false" title="High contrast" aria-label="Toggle high contrast"></button>
+      <button class="toggle" id="t-pause" title="Pause" aria-label="Pause game" style="display:none"></button>
+    </div>
+
+    <!-- LOADING -->
+    <section id="screen-loading" class="screen show" aria-label="Loading">
+      <div class="loader">
+        <div class="loader-coin">$</div>
+        <div class="loader-bar"><i id="load-bar"></i></div>
+        <div class="loader-txt">Tightening the grip…</div>
+      </div>
+    </section>
+
+    <!-- TITLE -->
+    <section id="screen-title" class="screen" aria-label="Start screen">
+      <div class="card">
+        <span class="eyebrow">A transparency mini-game</span>
+        <h1 class="title">Follow the <span class="accent">Money</span></h1>
+        <div class="subtitle">Tug of the Dollar</div>
+        <p class="lead" id="framing-fact"></p>
+        <p id="framing-plan" style="font-size:13px"></p>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-play">Play — haul the dollar</button>
+          <button class="btn btn-ghost" id="btn-how">How to play</button>
+        </div>
+        <div class="controls-hint">
+          <span><span class="key" style="color:var(--green)">TAP</span> to haul up</span>
+          <span>tap a <span class="key" style="color:var(--red)">grab</span> to throw it off</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section id="screen-howto" class="screen" aria-label="How to play">
+      <div class="card">
+        <span class="eyebrow">How to play</span>
+        <h2>Keep it out of the skim</h2>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="chip coin">$</div>
+            <div><strong>One taxpayer dollar hangs on the line</strong><p>The higher it rides, the more of it reaches public infrastructure.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip haul">↑</div>
+            <div><strong>Tap rapidly to haul it up</strong><p>Every tap hauls the dollar back toward the top. Hold to brace.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip grab">▼</div>
+            <div><strong>Throw off the grabs</strong><p>Skimming grabs latch on and drag it down. Tap one to fling it off.</p></div>
+          </div>
+        </div>
+        <p class="mini">Where the dollar finishes on the line is your score — <strong style="color:var(--paper)">$X of every $100</strong>.</p>
+        <button class="btn btn-primary" id="btn-how-start">Take the strain</button>
+      </div>
+    </section>
+
+    <!-- TRANSITION -->
+    <section id="screen-transition" class="screen" aria-label="Next level">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow" id="tr-eyebrow">Level 2</span>
+        <h2 id="tr-name">The Subcontract Chain</h2>
+        <p id="tr-desc"></p>
+        <div class="result-score" style="margin:2px 0">
+          <span class="of">Still on the line</span>
+          <span class="big" id="tr-carry" style="font-size:clamp(30px,10vw,44px)">$100</span>
+        </div>
+        <button class="btn btn-primary" id="btn-transition">Hold the line</button>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="screen-pause" class="screen" aria-label="Paused">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow">Paused</span>
+        <h2>Catch your breath</h2>
+        <div class="btnset" style="max-width:280px">
+          <button class="btn btn-primary" id="btn-resume">Resume</button>
+          <button class="btn btn-ghost" id="btn-restart">Restart run</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="screen-results" class="screen" aria-label="Results">
+      <div class="card">
+        <span class="eyebrow" id="res-eyebrow">Final tally</span>
+        <div class="result-score">
+          <span class="big" id="res-score">$0</span>
+          <span class="of">of every $100 stayed out of the skim</span>
+        </div>
+        <p class="result-verdict" id="res-verdict"></p>
+        <div class="result-stats">
+          <div class="stat"><b id="res-thrown">0</b><span>Grabs thrown</span></div>
+          <div class="stat"><b id="res-best">0</b><span>Best streak</span></div>
+          <div class="stat"><b id="res-peak">0</b><span>Peak grabs</span></div>
+        </div>
+        <div class="attributed" id="res-citation"></div>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-leaderboard">Add my score to the board</button>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="btn-share">Share</button>
+            <button class="btn btn-ghost" id="btn-replay">Play again</button>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy" href="#" target="_blank" rel="noopener">Our integrity plan</a>
+          </div>
+        </div>
+        <div class="legal-block" id="res-disclaimer"></div>
+      </div>
+    </section>
+
+    <!-- FORM -->
+    <section id="screen-form" class="screen" aria-label="Join the leaderboard">
+      <div class="card">
+        <span class="eyebrow">Add your score</span>
+        <h2>Join the board</h2>
+        <p style="font-size:13px">Your score will show as first name + postcode. <span id="form-privacy"></span></p>
+        <form id="lead-form" novalidate autocomplete="on">
+          <div class="field two">
+            <div class="field">
+              <label for="f-first">First name</label>
+              <input id="f-first" name="fname" autocomplete="given-name" maxlength="40" inputmode="text" />
+              <span class="err" id="e-first"></span>
+            </div>
+            <div class="field">
+              <label for="f-last">Last name</label>
+              <input id="f-last" name="lname" autocomplete="family-name" maxlength="40" />
+              <span class="err" id="e-last"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-email">Email</label>
+            <input id="f-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="120" />
+            <span class="err" id="e-email"></span>
+          </div>
+          <div class="field">
+            <label for="f-postcode">Postcode</label>
+            <input id="f-postcode" name="postcode" inputmode="numeric" maxlength="4" pattern="\d{4}" />
+            <span class="err" id="e-postcode"></span>
+          </div>
+          <!-- honeypot -->
+          <div class="hp" aria-hidden="true"><label>Website<input id="f-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <label class="consent">
+            <input type="checkbox" id="f-consent" />
+            <span id="consent-label"></span>
+          </label>
+          <span class="err" id="e-consent"></span>
+          <button class="btn btn-primary" type="submit" id="btn-submit">Submit &amp; see the board</button>
+          <button class="btn btn-ghost" type="button" id="btn-skip">Skip — just show the board</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="screen-leaderboard" class="screen" aria-label="Leaderboard">
+      <div class="card">
+        <span class="eyebrow">Leaderboard</span>
+        <h2>Who held the most</h2>
+        <div class="lb" id="lb-list"></div>
+        <p class="mini" id="lb-note"></p>
+        <div class="btnset">
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate2" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy2" href="#" target="_blank" rel="noopener">Our integrity plan</a>
+          </div>
+          <button class="btn btn-ghost" id="btn-replay2">Play again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER: legal chrome -->
+    <footer id="footer">
+      <div class="auth" id="foot-auth"></div>
+      <div id="foot-disclaimer"></div>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+/* ============================================================================
+   1) CONTENT  —  SINGLE SOURCE OF TRUTH FOR EVERY FACTUAL CLAIM
+   --------------------------------------------------------------------------
+   >>> LEGAL / COMMS REVIEW HAPPENS HERE. <<<
+   Everything with any factual weight is in this one object. Figures ship as
+   clearly-marked placeholders until legal supplies signed-off wording.
+   Each factual figure carries its own source + date + signoff flag.
+   Guardrails (enforced by content, per PRD):
+     - No real, identifiable person / company / union named or caricatured.
+     - Skim destinations use ONLY the generic category labels below.
+     - No depiction of violence, drugs, extortion, or exploitation. The
+       "grabs" are abstract mechanical clamps on a cable — not people, not
+       hands, not force against a person.
+     - Every displayed figure shows its source in the same view.
+   ========================================================================== */
+const CONTENT = {
+  // Framing (top of game). "Fact" line is attributed, not asserted.
+  framingFact:
+    "A parliamentary inquiry has heard allegations that billions in Big Build " +
+    "funding may have been diverted through corrupt subcontracting.",
+  framingPlan:
+    "[POLICY HOOK PENDING] — the Liberal Party’s plan for transparency and " +
+    "accountability in major projects.",
+
+  // Approved generic skim-destination labels (NO real entities).
+  pocketLabels: ["Ghost Shift", "Compromised Labour-Hire Firm", "Shell Company", "Inflated Invoice"],
+
+  // Levels
+  levels: {
+    l1: { name: "The Tender Process",    desc: "The first grabs reach in. Keep the dollar up where the public can see it." },
+    l2: { name: "The Subcontract Chain", desc: "Layer on layer — more grabs latch on at once, and they lunge. Hold the line." },
+    bonus: { name: "How It’s Supposed to Work", desc: "No grabs, no skim. Watch a clean project carry the dollar home." },
+  },
+
+  // The headline attributed statistic on the results screen.
+  // NOTHING here is asserted as the party's own finding.
+  citation: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",         // e.g. "up to $15 billion"
+    framing: "of Big Build costs may be linked to union-driven corruption and " +
+             "organised-crime infiltration — a figure the Victorian Government disputes.",
+    source:  "[SOURCE PENDING]",                          // e.g. "report to the Qld parliamentary inquiry / named outlet"
+    date:    "[DATE OF CITED REPORT PENDING]",
+    signoff: "PENDING",                                   // → reviewer name + date at the gate
+  },
+
+  // Corruption-specific disclaimer (distinct from the other games' fiction disclaimers).
+  disclaimer:
+    "This game depicts a generic subcontracting process. It does not depict any " +
+    "real person, company, or organisation. The cited allegations are attributed " +
+    "to their sources and have not been proven in any court.",
+
+  // Electoral authorisation line — legally required for electoral matter.
+  authorisation: "Authorised by [NAME PENDING], [PARTY & ADDRESS PENDING].",
+
+  // Lead-capture collection statement (privacy).
+  privacy:
+    "We collect your details to contact you about this campaign. You can opt out " +
+    "any time. See our [collection statement — LINK PENDING].",
+  consentLabel:
+    "I agree to be contacted and to the collection statement above. [WORDING PENDING LEGAL SIGN-OFF]",
+
+  // CTAs — placeholder hrefs, clearly not live.
+  donateUrl: "#donate-url-pending",
+  policyUrl: "#integrity-policy-url-pending",
+
+  // Share text (neutral).
+  shareText: (score) =>
+    `I kept $${score} of every $100 out of the skim in "Follow the Money — Tug of the Dollar". How much can you hold on to?`,
+};
+
+/* ============================================================================
+   2) THEME + SMALL HELPERS
+   ========================================================================== */
+const COL = {
+  ink:"#0B1B2B", paper:"#EAF1F5", dim:"#9DB2C0",
+  gold:"#F5C542", goldLite:"#FFE89A", goldDeep:"#C9971F",
+  red:"#E4573D", redDeep:"#8F2C1C", green:"#3DDC91", greenDeep:"#1C7A54",
+};
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const choice=a=>a[Math.floor(Math.random()*a.length)];
+const easeOutCubic=t=>1-Math.pow(1-t,3);
+const $=id=>document.getElementById(id);
+
+/* ============================================================================
+   3) PERSISTENT SETTINGS (sound / motion / contrast) — shared with siblings
+   ========================================================================== */
+const store = {
+  get(k,d){ try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d} },
+  set(k,v){ try{localStorage.setItem(k,JSON.stringify(v))}catch{} },
+};
+const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const settings = {
+  sound:    store.get("ftm_sound", false),
+  motion:   store.get("ftm_motion", prefersReducedMotion ? "off" : "on"),
+  contrast: store.get("ftm_contrast", false),
+};
+const motionOn = () => settings.motion === "on";
+
+/* ============================================================================
+   4) AUDIO — WebAudio, muted by default, lazy-init on first gesture.
+   Every cue has a redundant visual, so sound-off loses no information.
+   ========================================================================== */
+const Sound = (()=>{
+  let ctx=null, master=null, ready=false, lastTick=0;
+  function init(){
+    if(ready) return;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=.5; master.connect(ctx.destination); ready=true;
+    }catch{}
+  }
+  function tone(freq,dur,type="sine",vol=.3,slideTo=null){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime;
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.01);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.02);
+  }
+  return {
+    init,
+    // throttled soft tick for the rapid haul taps (so mashing isn't a machine-gun)
+    haul(){ const now=performance.now(); if(now-lastTick<55) return; lastTick=now; tone(rand(300,340),.045,"triangle",.05,rand(430,470)); },
+    throwOff(){ tone(680,.08,"sine",.16,1040); setTimeout(()=>tone(1020,.10,"sine",.10),42) }, // fling a grab off
+    grab(){ tone(150,.16,"sawtooth",.14,70) },                                                 // a grab latches on
+    surge(){ tone(90,.30,"sawtooth",.16,150); },                                               // a grab lunges
+    level(){ tone(440,.12,"sine",.14,660); setTimeout(()=>tone(660,.18,"sine",.12),90) },
+    win(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.35,"sine",.14),i*90)) },
+    lose(){ tone(200,.5,"sine",.14,90) },
+  };
+})();
+
+/* ============================================================================
+   5) CANVAS + RESPONSIVE SCALER
+   ========================================================================== */
+const canvas=$("game"), ctx=canvas.getContext("2d");
+let W=0,H=0,DPR=1;
+function resize(){
+  W=Math.max(1,canvas.clientWidth); H=Math.max(1,canvas.clientHeight);
+  DPR=Math.min(window.devicePixelRatio||1, 2.5);
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+const cableX=()=>W/2;
+const yInfra=()=>H*0.155;              // coin centre when value = 100 (top, secured)
+const ySkim =()=>H*0.845;              // coin centre when value = 0   (bottom, skimmed)
+const valueToY=(v)=>lerp(ySkim(), yInfra(), clamp(v,0,100)/100);
+const drainY  =()=>H*0.90;             // where the skim drain sits / grabs anchor
+function coinRadius(){ return 13 + 21*(game.value/100); }
+
+/* ============================================================================
+   6) PARTICLES + FLOATING TEXT (pooled)
+   ========================================================================== */
+const particles=[]; const POOL_MAX=440;
+function spawnParticles(x,y,color,count,opts={}){
+  if(!motionOn()) count=Math.min(count,4);
+  for(let i=0;i<count;i++){
+    if(particles.length>=POOL_MAX) break;
+    const a=opts.angle!=null?opts.angle+rand(-.6,.6):rand(0,Math.PI*2);
+    const sp=rand(opts.spMin??40,opts.spMax??220);
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp - (opts.lift||0),
+      life:rand(.4,.9),max:.9,size:rand(1.6,4.2),color,g:opts.g??140});
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.life-=dt; if(p.life<=0){particles.splice(i,1);continue}
+    p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.98;
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha=clamp(p.life/p.max,0,1); ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+const floaters=[];
+function spawnFloater(x,y,text,color){ floaters.push({x,y,text,color,life:1.1,max:1.1}); }
+function updateFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=34*dt; if(f.life<=0) floaters.splice(i,1); }
+}
+function drawFloaters(){
+  ctx.textAlign="center"; ctx.font="800 18px "+getMono();
+  for(const f of floaters){
+    ctx.globalAlpha=clamp(f.life/f.max,0,1);
+    ctx.fillStyle="rgba(0,0,0,.45)"; ctx.fillText(f.text,f.x+1,f.y+1);
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+function getMono(){ return 'ui-monospace,"Cascadia Code",Menlo,Consolas,monospace'; }
+function getSans(){ return 'ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'; }
+
+/* ============================================================================
+   7) TUNING + LEVEL DATA (difficulty is data-driven & provable from numbers)
+   --------------------------------------------------------------------------
+   The physics is a lightly-damped tug-of-war on one value (0..100):
+     • each latched grab pulls the value DOWN at `grip` units/sec
+     • each tap adds an upward velocity impulse (TUG.tapImpulse)
+     • holding the pointer adds a gentle continuous haul (TUG.holdRate)
+     • throwing a grab removes its pull and gives an upward jolt
+   Escalation L1 → L2 is literally "more simultaneous grabs, pulling harder,
+   and lunging" — read straight off handsStart/handsEnd/gripBase/surge.
+   ========================================================================== */
+const TUG = {
+  tapBump:    1.7,   // dollars hauled up per tap — the accessible floor (just tap anywhere)
+  holdRate:   6,     // dollars/sec while the pointer is held (a gentle brace, not a substitute)
+  strikeJolt: 1.2,   // extra dollars when a tap throws a grab off (the real reward is removing its pull)
+  bonusLift:  8,     // capped feel-good recovery on the clean bonus level (value → value+this)
+  coinEase:   0.0009,// render smoothing of the coin toward its true height (snappy, ~0.3s)
+};
+const LEVELS = [
+  { key:"l1", ...CONTENT.levels.l1, dur:16, handsStart:1, handsEnd:2, gripBase:4.6, gripVar:.30,
+    spawnGap:2.2, surge:false },
+  { key:"l2", ...CONTENT.levels.l2, dur:20, handsStart:2, handsEnd:4, gripBase:5.6, gripVar:.5,
+    spawnGap:1.5, surge:true, surgeGap:3.4, surgeMult:2.1 },
+];
+const BONUS = { key:"bonus", ...CONTENT.levels.bonus, dur:6 };
+
+/* ============================================================================
+   8) GAME STATE
+   ========================================================================== */
+let hands = [];       // active skim-grabs (clamps) on the cable
+let hkey = 0;
+
+const game = {
+  state:"loading",           // loading|title|howto|playing|bonus|transition|pause|results|form|leaderboard
+  levelIdx:0,
+  value:100,                 // the surviving dollar (= score); continuous across levels
+  coinY:0, coinWob:0,
+  held:false,                // pointer / key currently down (brace)
+  streak:0, bestStreak:0, throwCount:0, peakHands:0, lowest:100,
+  levelT:0, levelDur:0, spawnT:0, surgeT:0,
+  bgScroll:0, shake:0, hitstop:0, timeScale:1, flash:0, flashCol:COL.red, goldShower:0,
+  hintT:4.5, tapGlow:0, hauledOnce:false,
+  bonusTarget:100,
+  _sayL0:100,                // last announced value bucket (throttle a11y)
+  lastPlayerId:null, _pendingLevel:null, _resumeState:null,
+};
+function levelDef(){ return LEVELS[game.levelIdx] || LEVELS[0]; }
+function activeHands(){ let n=0; for(const h of hands) if(h.latched && !h.thrown) n++; return n; }
+
+/* ---- Screen (DOM) management --------------------------------------------- */
+const SCREENS=["loading","title","howto","transition","pause","results","form","leaderboard"];
+function showScreen(name){ for(const s of SCREENS){ $("screen-"+s).classList.toggle("show", s===name); } }
+function hideAllScreens(){ for(const s of SCREENS) $("screen-"+s).classList.remove("show"); }
+function setHUD(on){ $("hud").classList.toggle("show", on); $("t-pause").style.display=on?"grid":"none"; }
+function setFooter(on){ $("footer").classList.toggle("show", on); }
+function say(msg){ $("live").textContent=msg; }
+
+/* ============================================================================
+   9) GRABS — spawn / layout / physics contribution
+   --------------------------------------------------------------------------
+   Grabs are abstract mechanical clamps that latch onto the cable BELOW the
+   coin and pull it down. They live in the contested span between the coin and
+   the skim drain, spread by height so each is individually tappable.
+   ========================================================================== */
+function maxHandsNow(L){
+  const p=clamp(game.levelT/Math.max(1,L.dur),0,1);
+  return Math.round(lerp(L.handsStart, L.handsEnd, p));
+}
+function pickLabel(){   // prefer a generic category not already on the line, so grabs read as distinct
+  const used=new Set(hands.filter(h=>!h.thrown).map(h=>h.label));
+  const free=CONTENT.pocketLabels.filter(l=>!used.has(l));
+  return free.length?choice(free):choice(CONTENT.pocketLabels);
+}
+function spawnHand(L){
+  hands.push({
+    key:hkey++, label:pickLabel(),
+    gripBase:L.gripBase*rand(1-L.gripVar, 1+L.gripVar),
+    grip:0, latched:false, reach:0,          // reach 0..1 = clamp crawling up onto the cable
+    thrown:false, thrownT:0, fall:0,
+    surge:0, surgeVib:0,
+    px:cableX(), py:drainY(),
+    side:(hkey%2?1:-1),
+  });
+}
+// order active grabs top→bottom and give each a stable screen position each frame
+function layoutHands(){
+  const live=hands.filter(h=>!h.thrown);
+  const top=game.coinY + coinRadius() + 30;
+  const bot=Math.max(top+8, drainY()-14);
+  const n=live.length;
+  live.forEach((h,i)=>{
+    const ty=n===1 ? (top+bot)/2 : lerp(top, bot, (i+0.5)/n);
+    // ease clamps to their slot; newly-reaching ones climb from the drain
+    const target = lerp(drainY(), ty, h.latched?1:easeOutCubic(h.reach));
+    h.px=cableX() + Math.sin(h.key*1.7 + game.coinWob*0.5)*(h.latched? h.side*2 : 0);
+    h.py=lerp(h.py, target, 1-Math.pow(.001, 1/60));
+  });
+}
+
+/* ============================================================================
+   10) FLOW / STATE TRANSITIONS
+   ========================================================================== */
+function goTitle(){
+  game.state="title"; hideAllScreens(); showScreen("title"); setHUD(false); setFooter(true);
+  hands.length=0; game.value=100; game.coinY=valueToY(100);
+}
+function goHowTo(){ game.state="howto"; showScreen("howto"); setFooter(false); }
+
+function startRun(){
+  game.value=100; game.levelIdx=0; game.lastPlayerId=null;
+  game.streak=0; game.bestStreak=0; game.throwCount=0; game.peakHands=0; game.lowest=100;
+  game.hauledOnce=false;
+  beginLevel(0);
+}
+function beginLevel(idx){
+  game.levelIdx=idx; const L=LEVELS[idx];
+  hands.length=0; particles.length=0; floaters.length=0;
+  game.levelT=0; game.levelDur=L.dur; game.spawnT=0.4; game.surgeT=L.surgeGap||99; game.timeScale=1;
+  game.hintT=idx===0?4.5:0; game._sayL0=Math.round(game.value/20);
+  game.state="playing"; hideAllScreens(); setHUD(true); setFooter(false);
+  game.coinY=valueToY(game.value);
+  $("hud-level").textContent=L.name;
+  updateStreakHUD(); updateHUD();
+  say(`${L.name}. Tap fast to haul the dollar up. Throw off the grabs before they drag it into the skim.`);
+  Sound.level();
+}
+function endLevel(){
+  const next=game.levelIdx+1;
+  if(next<LEVELS.length){ showTransition(next); } else { beginBonus(); }
+}
+function showTransition(nextIdx){
+  game.state="transition"; setHUD(false); hideAllScreens(); showScreen("transition");
+  const L=LEVELS[nextIdx];
+  $("tr-eyebrow").textContent="Level "+(nextIdx+1);
+  $("tr-name").textContent=L.name; $("tr-desc").textContent=L.desc;
+  $("tr-carry").textContent="$"+Math.round(game.value);
+  game._pendingLevel=nextIdx;
+  say(`${L.name}. ${Math.round(game.value)} dollars still on the line.`);
+}
+function beginBonus(){
+  game.state="bonus"; hideAllScreens(); setHUD(true); setFooter(false);
+  hands.length=0; particles.length=0; floaters.length=0;
+  game.levelT=0; game.levelDur=BONUS.dur; game.timeScale=1;
+  game.bonusTarget=Math.min(100, game.value+TUG.bonusLift);   // a modest, capped feel-good recovery
+  game.coinY=valueToY(game.value);
+  $("hud-level").textContent=BONUS.name; updateStreakHUD(); updateHUD();
+  say(`${BONUS.name}. A clean project — no grabs. The dollar rises home.`);
+  Sound.level();
+}
+function finish(){
+  game.state="results"; setHUD(false); setFooter(true); hideAllScreens();
+  renderResults(); showScreen("results");
+  if(game.value>=70){ Sound.win(); game.goldShower=motionOn()?2.2:0; } else Sound.lose();
+}
+
+/* ============================================================================
+   11) INPUT — tap to HAUL (up) + throw a grab if the tap lands on one.
+   One verb: tap. Tapping empty space still hauls (accessible floor); landing
+   on a grab also flings it off (skill ceiling). Holding = gentle brace.
+   ========================================================================== */
+function haulPulse(){
+  if(game.state!=="playing" && game.state!=="bonus") return;
+  game.value = clamp(game.value + TUG.tapBump, 0, 100);
+  game.hauledOnce=true; game.hintT=0; game.tapGlow=Math.min(1,game.tapGlow+.5);
+  if(motionOn()) spawnParticles(cableX()+rand(-8,8), game.coinY+coinRadius()*0.7, "rgba(245,197,66,.6)", 2, {g:60,spMin:20,spMax:80,lift:70});
+  Sound.haul();
+}
+function throwHand(h){
+  if(!h || h.thrown) return;
+  h.thrown=true; h.thrownT=0; h.grip=0; h.surge=0;
+  game.throwCount++; game.streak++; if(game.streak>game.bestStreak) game.bestStreak=game.streak;
+  game.value = clamp(game.value + TUG.strikeJolt, 0, 100);   // small jolt + this grab's pull is now gone
+  if(motionOn()){
+    spawnParticles(h.px, h.py, COL.red, 12, {spMin:60,spMax:220,g:90});
+    spawnParticles(h.px, h.py, COL.goldLite, 5, {spMin:30,spMax:120,lift:40});
+    game.shake=Math.min(1,game.shake+.35);
+  }
+  spawnFloater(h.px, h.py-14, "OFF!", "#9ff0c2");
+  Sound.throwOff();
+  say(`Threw off ${h.label}.${game.streak>1?" Streak "+game.streak+".":""}`);
+}
+function strikeNearest(x,y){
+  let best=null,bd=1e9;
+  for(const h of hands){ if(h.thrown||!h.latched) continue;
+    const d=Math.hypot(x-h.px, y-h.py); if(d<bd){bd=d;best=h;} }
+  const R=Math.max(46, coinRadius()+30);
+  if(best && bd<=R){ throwHand(best); return true; }
+  return false;
+}
+function strikeStrongest(){                 // keyboard / autopilot: throw the hardest-pulling grab
+  let best=null,bg=-1;
+  for(const h of hands){ if(h.thrown||!h.latched) continue; if(h.grip>bg){bg=h.grip;best=h;} }
+  if(best){ throwHand(best); return true; }
+  return false;
+}
+function pointerPos(e){
+  const r=canvas.getBoundingClientRect();
+  const cx=(e.touches?e.touches[0].clientX:e.clientX), cy=(e.touches?e.touches[0].clientY:e.clientY);
+  return { x:clamp(cx-r.left,0,W), y:clamp(cy-r.top,0,H) };
+}
+function onDown(e){
+  Sound.init();
+  if(game.state!=="playing" && game.state!=="bonus") return;
+  game.held=true;
+  const p=pointerPos(e);
+  strikeNearest(p.x,p.y);      // if a grab is under the tap, fling it off (also jolts up)
+  haulPulse();                 // every tap hauls
+  e.preventDefault();
+}
+function onUp(){ game.held=false; }
+canvas.addEventListener("pointerdown",onDown);
+canvas.addEventListener("touchstart",onDown,{passive:false});
+window.addEventListener("pointerup",onUp);
+window.addEventListener("touchend",onUp);
+window.addEventListener("pointercancel",onUp);
+
+window.addEventListener("keydown",e=>{
+  Sound.init();
+  const k=e.key;
+  if([" ","ArrowUp","w","W"].includes(k)) e.preventDefault();
+  if(k==="Escape"){ if(game.state==="playing"||game.state==="bonus") pauseGame(); else if(game.state==="pause") resumeGame(); return; }
+  if(k==="Enter"){
+    if(game.state==="title"){ startRun(); return; }
+    if(game.state==="transition"){ $("btn-transition").click(); return; }
+  }
+  if(game.state==="playing"||game.state==="bonus"){
+    if([" ","ArrowUp","w","W"].includes(k)){
+      if(!e.repeat){ strikeStrongest(); }   // a fresh press throws the strongest grab…
+      game.held=true; haulPulse();          // …and always hauls; holding keeps the brace on
+    }
+  }
+});
+window.addEventListener("keyup",e=>{ if([" ","ArrowUp","w","W"].includes(e.key)) game.held=false; });
+
+function pauseGame(){ if(game.state!=="playing"&&game.state!=="bonus")return; game._resumeState=game.state; game.state="pause"; game.held=false; setHUD(false); showScreen("pause"); }
+function resumeGame(){ if(game.state!=="pause")return; game.state=game._resumeState||"playing"; hideAllScreens(); setHUD(true); }
+
+/* ============================================================================
+   12) UPDATE
+   ========================================================================== */
+function update(dt){
+  const active = game.state==="playing"||game.state==="bonus";
+  game.bgScroll += dt * (active ? 30 : 20);
+  updateParticles(dt); updateFloaters(dt);
+  if(game.shake>0) game.shake=Math.max(0,game.shake-dt*3.2);
+  if(game.flash>0) game.flash=Math.max(0,game.flash-dt*2.4);
+  if(game.tapGlow>0) game.tapGlow=Math.max(0,game.tapGlow-dt*3);
+  if(game.hintT>0 && active) game.hintT=Math.max(0,game.hintT-dt);
+  if(game.goldShower>0){ game.goldShower-=dt; if(motionOn()&&Math.random()<.5) spawnParticles(rand(0,W),-6,choice([COL.gold,COL.goldLite]),1,{g:120,spMin:20,spMax:60,lift:-40}); }
+  game.coinWob += dt*4;
+
+  if(game.state==="playing") updatePlaying(dt);
+  else if(game.state==="bonus") updateBonus(dt);
+  else { game.coinY=lerp(game.coinY, valueToY(game.value), 1-Math.pow(.02,dt)); }
+}
+
+function drainStep(dt, pull){
+  if(game.held) game.value += TUG.holdRate*dt;    // brace: gentle continuous haul while held
+  game.value -= pull*dt;                          // grabs drag the dollar down toward the skim
+  game.value = clamp(game.value, 0, 100);
+  // ease the coin's rendered height toward its true value (smooth, but responsive)
+  game.coinY = lerp(game.coinY, valueToY(game.value), 1-Math.pow(TUG.coinEase, dt));
+}
+
+function updatePlaying(dt){
+  const L=levelDef();
+  game.levelT += dt;
+
+  // --- spawn grabs up to the level's rising cap, paced by spawnGap -----------
+  const cap=maxHandsNow(L);
+  game.spawnT-=dt;
+  if(activeHands()<cap && game.spawnT<=0){ spawnHand(L); game.spawnT=L.spawnGap*rand(.75,1.1); if(motionOn()) Sound.grab(); }
+
+  // --- advance each grab: reach onto the cable, then pull; retire thrown ones -
+  let pull=0;
+  for(const h of hands){
+    if(h.thrown){ h.thrownT+=dt; h.fall+=dt; h.py+=h.fall*160*dt; continue; }
+    if(!h.latched){ h.reach=Math.min(1,h.reach+dt*1.6); if(h.reach>=1){ h.latched=true; } }
+    const ramp=lerp(0.55,1,clamp(game.levelT/L.dur,0,1));
+    let g=h.gripBase*ramp*(h.latched?1:h.reach);
+    // surges (L2): a latched grab periodically lunges — telegraphed, worth throwing
+    if(h.surge>0){ h.surge-=dt; h.surgeVib=h.surge>0? (h.surge<0.9?1:0) : 0; g*=(h.surge>0.9? 1 : (L.surgeMult||2)); }
+    h.grip=g; pull+=g;
+  }
+  // remove fully-retired thrown grabs
+  for(let i=hands.length-1;i>=0;i--){ if(hands[i].thrown && (hands[i].py>H+40 || hands[i].thrownT>1.2)) hands.splice(i,1); }
+
+  // --- trigger a surge on L2 -------------------------------------------------
+  if(L.surge){
+    game.surgeT-=dt;
+    if(game.surgeT<=0){
+      const cand=hands.filter(h=>h.latched&&!h.thrown&&h.surge<=0);
+      if(cand.length){ const h=choice(cand); h.surge=1.4; if(motionOn())game.shake=Math.min(1,game.shake+.2); Sound.surge(); say(`${h.label} is lunging — throw it off!`); }
+      game.surgeT=(L.surgeGap||3)*rand(.8,1.25);
+    }
+  }
+
+  layoutHands();
+  drainStep(dt, pull);
+  game.peakHands=Math.max(game.peakHands, activeHands());
+  game.lowest=Math.min(game.lowest, game.value);
+
+  // reset the throw-streak if the dollar slips into the danger zone
+  if(game.value<40 && game.streak>0) game.streak=0;
+
+  announceCrossings();
+  updateHUD();
+
+  if(game.levelT>=L.dur) return endLevel();
+}
+
+function updateBonus(dt){
+  game.levelT += dt;
+  for(const h of hands) h.thrown=true;                 // safety: no grabs in the bonus
+  // gentle, capped rise toward the target (showcases a clean run, doesn't rescue scores)
+  game.value = lerp(game.value, game.bonusTarget, 1-Math.pow(0.12, dt));
+  game.coinY = lerp(game.coinY, valueToY(game.value), 1-Math.pow(.01, dt));
+  if(motionOn() && Math.random()<.5) spawnParticles(rand(W*0.32,W*0.68), drainY(), choice([COL.green,"#c8ffe6"]),1,{g:-30,spMin:10,spMax:40,lift:60});
+  updateHUD();
+  if(game.levelT>=BONUS.dur) return finish();
+}
+
+function announceCrossings(){
+  const bucket=Math.round(game.value/20);   // 0..5
+  if(bucket!==game._sayL0){
+    if(bucket<game._sayL0 && bucket<=1) say(`Careful — only ${Math.round(game.value)} dollars left on the line.`);
+    game._sayL0=bucket;
+  }
+}
+
+/* ---- HUD sync ------------------------------------------------------------- */
+function updateHUD(){
+  const v=Math.round(game.value);
+  $("hud-money").innerHTML=`$${v}<small>/100</small>`;
+  const fill=$("hud-fill"); fill.style.width=game.value+"%";
+  fill.classList.toggle("flash", game.value<40);
+  let prog=0;
+  if(game.state==="playing"||game.state==="bonus"){ prog=clamp(game.levelT/game.levelDur,0,1); }
+  $("hud-progress").style.width=(prog*100)+"%";
+}
+function updateStreakHUD(){
+  const el=$("hud-streak");
+  if(game.streak>=2){ el.textContent="THROWN ×"+game.streak; el.classList.add("show"); }
+  else el.classList.remove("show");
+}
+
+/* ============================================================================
+   13) RENDER
+   ========================================================================== */
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(game.shake>0 && motionOn()){ const s=game.shake*7; ctx.translate(rand(-s,s),rand(-s,s)); }
+  drawBackground();
+  const showScene=["title","playing","bonus","transition","pause"].includes(game.state);
+  if(showScene){
+    drawZones();
+    drawCable();
+    if(game.state==="playing"||game.state==="bonus"||game.state==="transition") drawHands();
+    drawCoin();
+    if(game.state==="playing") drawHint();
+  }
+  drawParticles(); drawFloaters();
+  ctx.restore();
+  if(game.flash>0){
+    ctx.globalAlpha=game.flash*.5;
+    const g=ctx.createRadialGradient(W/2,game.coinY,H*.12,W/2,game.coinY,H*.7);
+    g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,game.flashCol);
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  }
+  drawVignette();
+}
+
+function drawBackground(){
+  const hc=settings.contrast;
+  ctx.fillStyle=hc?"#04101B":COL.ink; ctx.fillRect(0,0,W,H);
+  // faint ledger rules (shared visual language with the sibling builds)
+  const gapY=44, off=(game.bgScroll%gapY);
+  ctx.strokeStyle=hc?"rgba(200,220,235,.10)":"rgba(157,178,192,.06)"; ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let y=-gapY+off; y<H+gapY; y+=gapY){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
+  ctx.stroke();
+}
+
+function drawZones(){
+  const cx=cableX();
+  // --- top: PUBLIC INFRASTRUCTURE (the goal / light) ------------------------
+  const tg=ctx.createLinearGradient(0,0,0,H*0.22);
+  tg.addColorStop(0,"rgba(61,220,145,.20)"); tg.addColorStop(1,"rgba(61,220,145,0)");
+  ctx.fillStyle=tg; ctx.fillRect(0,0,W,H*0.22);
+  // the goal label crowds the HUD during play — the HUD conveys it there, so only
+  // draw it when the HUD is hidden (title / transition / pause).
+  if(game.state!=="playing" && game.state!=="bonus"){
+    ctx.fillStyle="rgba(157,220,190,.9)"; ctx.textAlign="center"; ctx.font="700 11px "+getMono();
+    ctx.fillText("▲  PUBLIC INFRASTRUCTURE  ▲", cx, H*0.058);
+  }
+  // --- bottom: the SKIM drain (where grabs pull it) -------------------------
+  const bg=ctx.createLinearGradient(0,H*0.80,0,H);
+  bg.addColorStop(0,"rgba(228,87,61,0)"); bg.addColorStop(1,"rgba(143,44,28,.42)");
+  ctx.fillStyle=bg; ctx.fillRect(0,H*0.80,W,H*0.20);
+  ctx.fillStyle="rgba(255,150,130,.85)"; ctx.font="700 11px "+getMono();
+  ctx.fillText("▼  SKIMMED  ▼", cx, H*0.965);
+
+  // --- side meter ticks: $0 (bottom) … $100 (top) ---------------------------
+  ctx.textAlign="left"; ctx.font="600 10px "+getMono();
+  for(let v=0; v<=100; v+=25){
+    const y=valueToY(v);
+    ctx.strokeStyle="rgba(157,178,192,.16)"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(14,y); ctx.lineTo(24,y); ctx.stroke();
+    ctx.fillStyle="rgba(157,178,192,.55)"; ctx.fillText("$"+v, 28, y+3);
+  }
+}
+
+function drawCable(){
+  const cx=cableX(), top=yInfra()-H*0.045, bot=drainY();
+  const cy=game.coinY;
+  // secured span (coin → top): calm gold/green
+  ctx.lineCap="round";
+  const gS=ctx.createLinearGradient(0,top,0,cy);
+  gS.addColorStop(0,"rgba(61,220,145,.55)"); gS.addColorStop(1,"rgba(245,197,66,.8)");
+  ctx.strokeStyle=gS; ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(cx,top); ctx.lineTo(cx,cy); ctx.stroke();
+  // contested span (coin → drain): strained red, thicker with more pull
+  const strain=clamp(activeHands()/5,0,1);
+  ctx.strokeStyle="rgba(228,87,61,"+(0.35+0.45*strain)+")"; ctx.lineWidth=3+strain*2.5;
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,bot); ctx.stroke();
+  // top anchor block (the public purse)
+  ctx.fillStyle="rgba(61,220,145,.85)"; roundRect(cx-22,top-7,44,9,4); ctx.fill();
+}
+
+function drawHands(){
+  const cx=cableX(), cy=game.coinY, dy=drainY();
+  for(const h of hands){
+    const a = h.thrown ? clamp(1-h.thrownT/1.2,0,1) : 1;
+    if(a<=0) continue;
+    ctx.globalAlpha=a;
+    // pull cord: from the grab down into the skim drain (where the money goes)
+    ctx.strokeStyle="rgba(228,87,61,"+(0.28+0.4*clamp(h.grip/8,0,1))+")";
+    ctx.lineWidth=2+clamp(h.grip/6,0,2);
+    ctx.beginPath(); ctx.moveTo(h.px,h.py);
+    ctx.bezierCurveTo(h.px, (h.py+dy)/2, cx+h.side*W*0.16, (h.py+dy)/2, cx+h.side*W*0.10, dy); ctx.stroke();
+    // the clamp gripping the cable
+    drawClamp(h.px, h.py, h.surge>0, h.thrown);
+    // label tag (generic skim category — legally-visible, kept subtle)
+    if(!h.thrown){
+      const lx=cx + h.side*(coinRadiusSafe()+8), tx=cx + h.side*(coinRadiusSafe()+14);
+      ctx.font="600 9.5px "+getSans(); ctx.textAlign=h.side>0?"left":"right";
+      ctx.fillStyle= h.surge>0 ? "rgba(255,180,160,.95)" : "rgba(255,170,150,.55)";
+      ctx.fillText(h.label.toUpperCase(), h.px + h.side*20, h.py+3);
+    }
+    ctx.globalAlpha=1;
+  }
+}
+function coinRadiusSafe(){ return coinRadius(); }
+
+function drawClamp(x,y,surging,thrown){
+  const vib = (surging && motionOn()) ? Math.sin(performance.now()*0.05)*2 : 0;
+  const r=11;
+  ctx.save();
+  ctx.translate(x+vib,y);
+  // body
+  ctx.shadowColor=surging?"rgba(255,90,60,.8)":"rgba(0,0,0,.5)"; ctx.shadowBlur=surging?16:6;
+  const g=ctx.createLinearGradient(0,-r,0,r);
+  g.addColorStop(0, thrown?"#6a7178":(surging?"#ff6a4d":"#c8442f"));
+  g.addColorStop(1, thrown?"#454b50":(surging?"#b02a17":"#7f2416"));
+  ctx.fillStyle=g;
+  // two pincers meeting at the cable
+  ctx.beginPath();
+  ctx.moveTo(-r,4); ctx.quadraticCurveTo(-r-4,-6,-3,-r); ctx.quadraticCurveTo(0,-3,0,0);
+  ctx.quadraticCurveTo(0,-3,3,-r); ctx.quadraticCurveTo(r+4,-6,r,4);
+  ctx.quadraticCurveTo(0,10,-r,4); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur=0;
+  // rivet
+  ctx.fillStyle="rgba(255,255,255,.55)"; ctx.beginPath(); ctx.arc(0,-1,2,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawCoin(){
+  const r=coinRadius();
+  const wob=motionOn()?Math.sin(game.coinWob)*2:0;
+  const x=cableX(), y=game.coinY+wob;
+  // haul flash ring
+  if(game.tapGlow>0 && motionOn()){
+    ctx.globalAlpha=game.tapGlow*.5; ctx.strokeStyle=COL.goldLite; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(x,y,r+6+ (1-game.tapGlow)*10,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1;
+  }
+  ctx.save();
+  ctx.shadowColor="rgba(245,197,66,.6)"; ctx.shadowBlur=motionOn()?26:8;
+  const g=ctx.createRadialGradient(x-r*.35,y-r*.4,r*.15,x,y,r);
+  g.addColorStop(0,COL.goldLite); g.addColorStop(.6,COL.gold); g.addColorStop(1,COL.goldDeep);
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(x,y,r-2,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle="#4a3a08"; ctx.textAlign="center"; ctx.font=`800 ${Math.round(r*1.05)}px `+getSans();
+  ctx.fillText("$", x, y+r*0.36);
+}
+
+function drawHint(){
+  if(game.hintT<=0 || game.hauledOnce && game.hintT<=0) return;
+  const a=clamp(game.hintT/4.5,0,1)*(0.6+0.4*Math.sin(performance.now()*0.006));
+  ctx.globalAlpha=a; ctx.textAlign="center";
+  ctx.fillStyle=COL.goldLite; ctx.font="800 15px "+getSans();
+  ctx.fillText("TAP TO HAUL ↑", cableX(), game.coinY-coinRadius()-22);
+  ctx.globalAlpha=1;
+}
+
+function drawVignette(){
+  const g=ctx.createRadialGradient(W/2,H/2,H*.35,W/2,H/2,H*.75);
+  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,.42)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+function roundRect(x,y,w,h,r){ w=Math.max(0,w); h=Math.max(0,h); r=Math.max(0,Math.min(r,w/2,h/2)); ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+/* ============================================================================
+   14) MAIN LOOP (fixed timestep)
+   ========================================================================== */
+new ResizeObserver(resize).observe($("field"));
+window.addEventListener("resize",resize);
+resize(); game.coinY=valueToY(100);
+
+let last=performance.now(), acc=0; const STEP=1/60;
+function frame(t){
+  if(canvas.clientWidth!==W||canvas.clientHeight!==H){ resize(); }
+  let dt=(t-last)/1000; last=t; if(dt>0.1)dt=0.1;
+  if(game.hitstop>0){ game.hitstop-=dt; }
+  else { acc+=dt*game.timeScale; let n=0; while(acc>=STEP && n<5){ update(STEP); acc-=STEP; n++; } if(acc>STEP*5)acc=0; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================================
+   15) RESULTS + LEADERBOARD RENDERING
+   ========================================================================== */
+function verdictFor(score){
+  if(score>=90) return "You held the line. Almost every dollar reached the public.";
+  if(score>=70) return "Most of it survived — but the skim still took its cut.";
+  if(score>=45) return "Nearly half the dollar was dragged into the skim.";
+  if(score>0)   return "The grabs won most of it before it reached the public.";
+  return "The dollar was dragged all the way into the skim.";
+}
+function renderResults(){
+  const score=Math.round(game.value);
+  const el=$("res-score"); const dur=motionOn()?700:0, t0=performance.now();
+  (function tick(now){
+    const p=dur?clamp((now-t0)/dur,0,1):1;
+    el.textContent="$"+Math.round(easeOutCubic(p)*score);
+    if(p<1) requestAnimationFrame(tick);
+  })(t0);
+  $("res-verdict").textContent=verdictFor(score);
+  $("res-thrown").textContent=game.throwCount;
+  $("res-best").textContent=game.bestStreak;
+  $("res-peak").textContent=game.peakHands;
+  const c=CONTENT.citation;
+  $("res-citation").innerHTML =
+    `<span class="pending">${esc(c.figure)}</span> ${esc(c.framing)}` +
+    `<span class="src">Source: ${esc(c.source)} · ${esc(c.date)}</span>`;
+  $("res-disclaimer").innerHTML="<strong>Disclaimer.</strong> "+esc(CONTENT.disclaimer);
+  say(`Result: ${score} dollars of every 100 stayed out of the skim.`);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---- Leaderboard store: LOCAL now, REMOTE (Cloudflare) later --------------
+   Swap point for launch: implement RemoteLeaderboard against a serverless
+   endpoint (Cloudflare Pages Function + D1) and flip USE_REMOTE. PII stays
+   server-side there; this local store keeps data on-device only (demo/fallback).
+   -------------------------------------------------------------------------- */
+const USE_REMOTE=false;
+const LocalLeaderboard={
+  KEY:"ftm_tug_lb_v1",
+  all(){ return store.get(this.KEY,[]) || []; },
+  async top(n=10){ return this.all().slice(0,n); },
+  async submit(entry){
+    const list=this.all();
+    const rec={ id:(performance.now()+"_"+Math.random()).toString(),
+      first:entry.first, postcode:entry.postcode, score:entry.score, ts:Date.now(),
+      // last name + email are the *private* captured fields. On-device only here;
+      // in the Cloudflare build these go server-side and never to the public board.
+      _last:entry.last, _email:entry.email };
+    list.push(rec); list.sort((a,b)=>b.score-a.score);
+    const rank=list.findIndex(r=>r.id===rec.id)+1;
+    store.set(this.KEY, list.slice(0,100));
+    return { rank, id:rec.id, total:list.length };
+  },
+};
+const Leaderboard = USE_REMOTE ? null /* RemoteLeaderboard (launch) */ : LocalLeaderboard;
+
+async function renderLeaderboard(){
+  const rows=await Leaderboard.top(10);
+  const list=$("lb-list"); list.innerHTML="";
+  if(!rows.length){ list.innerHTML='<div class="lb-empty">No scores yet — you could be first.</div>'; }
+  rows.forEach((r,i)=>{
+    const div=document.createElement("div");
+    div.className="lb-row"+(r.id===game.lastPlayerId?" me":"");
+    div.innerHTML=`<span class="rank">${i+1}</span>`+
+      `<span class="who">${esc(r.first||"Player")}<small>Postcode ${esc(r.postcode||"—")}</small></span>`+
+      `<span class="sc">$${Math.round(r.score)}</span>`;
+    list.appendChild(div);
+  });
+  $("lb-note").textContent = USE_REMOTE ? "" :
+    "Scores are saved on this device (demo mode). A shared board is enabled at launch.";
+}
+
+/* ============================================================================
+   16) UI WIRING
+   ========================================================================== */
+$("framing-fact").textContent=CONTENT.framingFact;
+$("framing-plan").textContent=CONTENT.framingPlan;
+$("foot-auth").textContent=CONTENT.authorisation;
+$("foot-disclaimer").textContent=CONTENT.disclaimer;
+$("form-privacy").innerHTML=esc(CONTENT.privacy);
+$("consent-label").textContent=CONTENT.consentLabel;
+$("btn-donate").href=CONTENT.donateUrl; $("btn-donate2").href=CONTENT.donateUrl;
+$("btn-policy").href=CONTENT.policyUrl; $("btn-policy2").href=CONTENT.policyUrl;
+
+$("btn-play").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-how").onclick=goHowTo;
+$("btn-how-start").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-transition").onclick=()=>{ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); };
+$("btn-resume").onclick=resumeGame;
+$("btn-restart").onclick=()=>{ hideAllScreens(); startRun(); };
+$("t-pause").onclick=()=>{ game.state==="pause"?resumeGame():pauseGame(); };
+$("btn-replay").onclick=startRun;
+$("btn-replay2").onclick=startRun;
+$("btn-leaderboard").onclick=()=>{ game.state="form"; hideAllScreens(); showScreen("form"); setFooter(false); $("f-first").focus(); };
+$("btn-skip").onclick=async()=>{ game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true); };
+
+$("btn-share").onclick=async()=>{
+  const score=Math.round(game.value); const text=CONTENT.shareText(score);
+  const url=location.href.split("#")[0];
+  try{
+    if(navigator.share){ await navigator.share({title:"Follow the Money — Tug of the Dollar",text,url}); }
+    else { await navigator.clipboard.writeText(text+" "+url); toast("Link copied"); }
+  }catch{}
+};
+
+$("lead-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const first=$("f-first").value.trim(), last=$("f-last").value.trim(),
+        email=$("f-email").value.trim(), postcode=$("f-postcode").value.trim(),
+        consent=$("f-consent").checked, hp=$("f-website").value;
+  let ok=true;
+  const setErr=(id,inp,msg)=>{ $(id).textContent=msg||""; if(inp) $(inp).setAttribute("aria-invalid", msg?"true":"false"); if(msg)ok=false; };
+  setErr("e-first","f-first", first?"":"Enter your first name");
+  setErr("e-last","f-last", last?"":"Enter your last name");
+  setErr("e-email","f-email", /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?"":"Enter a valid email");
+  setErr("e-postcode","f-postcode", /^\d{4}$/.test(postcode)?"":"Enter a 4-digit postcode");
+  setErr("e-consent",null, consent?"":"Please tick to continue");
+  if(hp) return;                    // honeypot tripped — silently drop
+  if(!ok) return;
+  const res=await Leaderboard.submit({first,last,email,postcode,score:Math.round(game.value)});
+  game.lastPlayerId=res.id;
+  game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true);
+  say(`You ranked number ${res.rank} of ${res.total}.`);
+});
+
+function toast(msg){
+  const t=document.createElement("div"); t.textContent=msg;
+  t.style.cssText="position:absolute;left:50%;bottom:80px;transform:translateX(-50%);z-index:20;"+
+    "background:rgba(8,20,32,.95);border:1px solid var(--card-brd);color:var(--paper);"+
+    "padding:10px 16px;border-radius:10px;font:600 13px var(--font)";
+  $("field").appendChild(t); setTimeout(()=>t.remove(),1600);
+}
+
+/* ---- Toggles -------------------------------------------------------------- */
+const ICONS={
+  soundOn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"/></svg>',
+  soundOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 5m0-5-5 5"/></svg>',
+  motion:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+  contrast:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+};
+function applyToggles(){
+  document.documentElement.setAttribute("data-motion", settings.motion);
+  document.documentElement.setAttribute("data-contrast", settings.contrast?"on":"off");
+  const s=$("t-sound"); s.innerHTML=settings.sound?ICONS.soundOn:ICONS.soundOff;
+  s.setAttribute("aria-pressed",settings.sound); s.title="Sound ("+(settings.sound?"on":"off")+")";
+  const m=$("t-motion"); m.innerHTML=ICONS.motion; m.setAttribute("aria-pressed", settings.motion==="off"); m.title=(motionOn()?"Reduce motion":"Motion reduced");
+  const c=$("t-contrast"); c.innerHTML=ICONS.contrast; c.setAttribute("aria-pressed",settings.contrast); c.title="High contrast ("+(settings.contrast?"on":"off")+")";
+  $("t-pause").innerHTML=ICONS.pause;
+}
+$("t-sound").onclick=()=>{ settings.sound=!settings.sound; store.set("ftm_sound",settings.sound); if(settings.sound){Sound.init();Sound.throwOff();} applyToggles(); };
+$("t-motion").onclick=()=>{ settings.motion=motionOn()?"off":"on"; store.set("ftm_motion",settings.motion); applyToggles(); };
+$("t-contrast").onclick=()=>{ settings.contrast=!settings.contrast; store.set("ftm_contrast",settings.contrast); applyToggles(); };
+applyToggles();
+
+/* ============================================================================
+   16b) TEST HOOK — inert in production; only active with ?debug or #debug.
+   ========================================================================== */
+if(new URLSearchParams(location.search).has("debug") || location.hash==="#debug"){
+  window.__ftm = {
+    game, LEVELS, BONUS, TUG, get hands(){ return hands; },
+    step(dt=1/60){ update(dt); render(); },
+    steps(n,dt=1/60){ for(let i=0;i<n;i++){ update(dt); render(); } },
+    play(){ startRun(); },
+    haul(){ haulPulse(); },
+    throwOne(){ return strikeStrongest(); },
+    // ---- Perfect run: haul + throw the strongest grab every frame → ~$100 ---
+    autopilot(maxSteps=20000){ startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        if(game.state==="playing"||game.state==="bonus"){
+          game.held=true; haulPulse(); strikeStrongest(); update(1/60); n++;
+        } else break;
+      }
+      game.held=false;
+      return { state:game.state, score:Math.round(game.value), thrown:game.throwCount, best:game.bestStreak, peak:game.peakHands, low:Math.round(game.lowest), steps:n }; },
+    // ---- Do-nothing run: never haul → the skim wins → ~$0 -------------------
+    autofail(maxSteps=20000){ startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        if(game.state==="playing"||game.state==="bonus"){ game.held=false; update(1/60); n++; }
+        else break;
+      }
+      return { state:game.state, score:Math.round(game.value), thrown:game.throwCount, low:Math.round(game.lowest), steps:n }; },
+    // ---- Tune helper: mash at a fixed tap rate (no throws) — measures the
+    //      pure-accessibility floor so we can keep mid scores spread out. -----
+    sim(tapHz=6, {throwsOff=true}={}){ startRun(); let n=0, acc=0;
+      while(game.state!=="results" && n<40000){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        if(game.state==="playing"||game.state==="bonus"){
+          acc+=tapHz*(1/60);
+          while(acc>=1){ haulPulse(); if(throwsOff) strikeStrongest(); acc-=1; }
+          update(1/60); n++;
+        } else break;
+      }
+      return { tapHz, score:Math.round(game.value), thrown:game.throwCount, peak:game.peakHands, low:Math.round(game.lowest) }; },
+  };
+}
+
+/* ============================================================================
+   17) BOOT / LOADING
+   ========================================================================== */
+(function boot(){
+  const bar=$("load-bar"); let p=0;
+  const iv=setInterval(()=>{ p=Math.min(100,p+rand(14,30)); bar.style.width=p+"%";
+    if(p>=100){ clearInterval(iv); setTimeout(goTitle, 260); }
+  }, 130);
+})();
+</script>
+</body>
+</html>

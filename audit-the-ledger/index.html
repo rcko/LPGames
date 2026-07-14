@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="description" content="Follow the Money — Audit the Ledger. Scan each page of the ledger and flag the skims before the audit window closes. How much of every $100 reaches public infrastructure?" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#0B1B2B" />
+<title>Follow the Money — Audit the Ledger</title>
+<style>
+/* ============================================================================
+   FOLLOW THE MONEY — AUDIT THE LEDGER  (self-contained static build)
+   No build step, no dependencies, no external network calls.
+   Mechanic: spot-and-tap the skims in a STATIC ledger page before the audit
+   window closes (NOT steer-to-dodge, NOT the switchboard's moving-board routing).
+   Art direction: forensic-accounting / ledger. Single committed dark theme.
+   ========================================================================== */
+:root{
+  --ink:#0B1B2B;            /* field */
+  --ink-2:#0E2233;         /* raised surface */
+  --paper:#EAF1F5;         /* text on dark */
+  --paper-dim:#9DB2C0;     /* muted text */
+  --gold:#F5C542;          /* the dollar / primary accent */
+  --gold-deep:#C9971F;
+  --red:#E4573D;           /* skim / alert */
+  --red-deep:#8F2C1C;
+  --green:#3DDC91;         /* clean / audit */
+  --green-deep:#1C7A54;
+  --amber:#F2B33D;         /* false-flag / held payment */
+  --sky:#7FD3FF;           /* audit window / timer */
+  --line:rgba(157,178,192,.16);
+  --card:rgba(14,34,51,.86);
+  --card-brd:rgba(157,178,192,.22);
+  --focus:#7FD3FF;
+  --radius:16px;
+  --shadow:0 18px 50px rgba(0,0,0,.45);
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","SFMono-Regular","Segoe UI Mono",Menlo,Consolas,monospace;
+}
+/* high-contrast toggle overrides */
+html[data-contrast="on"]{
+  --ink:#04101B; --paper:#FFFFFF; --paper-dim:#C7D6E0;
+  --line:rgba(200,220,235,.30); --card:rgba(4,16,27,.94); --card-brd:rgba(200,220,235,.45);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+html{background:#06101A}
+body{
+  font-family:var(--font); color:var(--paper);
+  background:radial-gradient(120% 80% at 50% -10%, #10283b 0%, #081420 45%, #050d15 100%);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow:hidden; overscroll-behavior:none;
+}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- Stage: centered vertical play strip, framed on wide screens ---------- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#field{
+  position:relative; width:min(100vw,560px); height:100dvh; height:100vh;
+  overflow:hidden; box-shadow:0 0 0 1px var(--line), 0 30px 90px rgba(0,0,0,.55);
+  background:var(--ink);
+}
+@media (min-width:600px){ #field{border-radius:22px; height:min(100dvh,940px); height:min(100vh,940px)} }
+canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* ---- HUD ------------------------------------------------------------------ */
+#hud{position:absolute;left:0;right:0;top:0;padding:12px 16px;
+  display:none; flex-direction:column; gap:8px; pointer-events:none; z-index:6}
+#hud.show{display:flex}
+.hud-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.level-pill{font:600 12px/1 var(--font);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--paper-dim);background:rgba(8,20,32,.6);border:1px solid var(--line);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px)}
+.streak-pill{font:700 12px/1 var(--mono);letter-spacing:.04em;color:var(--gold);
+  background:rgba(245,197,66,.1);border:1px solid rgba(245,197,66,.4);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px);
+  opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease}
+.streak-pill.show{opacity:1;transform:none}
+.meter-wrap{flex:1}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.meter-label{font:600 11px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--paper-dim)}
+.meter-val{font:700 15px/1 var(--mono);color:var(--gold)}
+.meter-val small{color:var(--paper-dim);font-weight:600}
+.meter-val.time{color:var(--sky);font-size:14px}
+.meter-val.time.low{color:var(--red)}
+.meter-bar{height:8px;border-radius:999px;background:rgba(8,20,32,.7);border:1px solid var(--line);overflow:hidden}
+.meter-bar.thin{height:6px}
+.meter-fill{height:100%;width:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--gold-deep),var(--gold));
+  box-shadow:0 0 14px rgba(245,197,66,.5);transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.meter-fill.flash{background:linear-gradient(90deg,var(--red-deep),var(--red))}
+.meter-fill.time{background:linear-gradient(90deg,#4a93c4,var(--sky));box-shadow:0 0 12px rgba(127,211,255,.45);
+  transition:width .12s linear}
+.meter-fill.time.low{background:linear-gradient(90deg,var(--red-deep),var(--red));box-shadow:0 0 14px rgba(228,87,61,.55)}
+.progress-line{height:3px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.progress-inner{height:100%;width:0;background:var(--paper-dim);opacity:.6;transition:width .3s ease}
+
+/* ---- Post-the-ledger action (in play, over canvas) ------------------------ */
+#btn-post{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);z-index:7;display:none;width:min(80vw,340px)}
+#btn-post.show{display:inline-flex}
+#btn-post .count{font:800 12px/1 var(--mono);background:rgba(38,32,10,.22);color:#3a2f08;
+  padding:4px 8px;border-radius:999px;margin-left:8px}
+
+/* ---- Top-right toggles ---------------------------------------------------- */
+#toggles{position:absolute;top:12px;right:12px;display:flex;gap:8px;z-index:8}
+.toggle{width:38px;height:38px;border-radius:11px;border:1px solid var(--card-brd);
+  background:rgba(8,20,32,.66);color:var(--paper-dim);cursor:pointer;display:grid;place-items:center;
+  backdrop-filter:blur(8px);transition:transform .12s ease,color .12s ease,border-color .12s}
+.toggle:hover{transform:translateY(-1px);color:var(--paper)}
+.toggle[aria-pressed="true"]{color:var(--gold);border-color:rgba(245,197,66,.5)}
+.toggle svg{width:18px;height:18px;display:block}
+.toggle:focus-visible,button:focus-visible,a.btn:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ---- Screens (DOM overlay for accessibility) ------------------------------ */
+.screen{position:absolute;inset:0;z-index:9;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:26px 22px;gap:18px;
+  overflow-y:auto;
+  background:radial-gradient(120% 70% at 50% 0%, rgba(11,27,43,.55), rgba(5,13,21,.86) 70%);
+  backdrop-filter:blur(3px)}
+.screen.show{display:flex;animation:fadeIn .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--card-brd);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:24px 22px;display:flex;flex-direction:column;gap:16px}
+.eyebrow{font:700 12px/1 var(--font);letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+h1.title{font:800 clamp(30px,8vw,44px)/1.02 var(--font);letter-spacing:-.02em;margin:0}
+h1.title .accent{color:var(--gold)}
+.subtitle{font:700 13px/1 var(--font);letter-spacing:.22em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:9px}
+.subtitle::before,.subtitle::after{content:"";height:1px;flex:1;background:var(--line)}
+h2{font:800 clamp(22px,6vw,30px)/1.05 var(--font);letter-spacing:-.01em;margin:0}
+p{margin:0;color:var(--paper-dim);font-size:15px;line-height:1.55}
+p.lead{color:var(--paper);font-size:16px}
+.attributed{font-size:13px;line-height:1.5;color:var(--paper-dim);
+  border-left:3px solid var(--gold);padding:10px 0 10px 13px;background:rgba(245,197,66,.05);border-radius:0 8px 8px 0}
+.attributed .src{display:block;margin-top:6px;color:#7f94a3;font-size:12px}
+.pending{color:var(--gold);font-weight:700;font-variant:small-caps;letter-spacing:.02em}
+
+/* buttons */
+.btn{appearance:none;border:0;cursor:pointer;font:700 16px/1 var(--font);letter-spacing:.01em;
+  padding:15px 20px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  text-decoration:none;transition:transform .12s cubic-bezier(.2,.8,.2,1),box-shadow .12s,filter .12s;width:100%}
+.btn:active{transform:translateY(1px) scale(.995)}
+.btn-primary{background:linear-gradient(180deg,#ffd75e,var(--gold));color:#26200a;
+  box-shadow:0 10px 26px rgba(245,197,66,.34),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(245,197,66,.42),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--paper);border:1px solid var(--card-brd)}
+.btn-ghost:hover{background:rgba(255,255,255,.09);transform:translateY(-1px)}
+.btn-green{background:linear-gradient(180deg,#54f0a8,var(--green));color:#04231a;box-shadow:0 10px 26px rgba(61,220,145,.3)}
+.btn-row{display:flex;gap:10px}
+.btn-row .btn{width:auto;flex:1}
+.btnset{display:flex;flex-direction:column;gap:10px}
+
+.controls-hint{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;color:var(--paper-dim);font-size:13px;align-items:center}
+.key{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:7px;
+  border:1px solid var(--card-brd);background:rgba(255,255,255,.05);font:700 13px/1 var(--mono);color:var(--paper)}
+
+/* how-to legend */
+.legend{display:flex;flex-direction:column;gap:12px}
+.legend-item{display:flex;align-items:center;gap:13px}
+.chip{width:44px;height:44px;border-radius:12px;flex:0 0 auto;display:grid;place-items:center;font-weight:800;font-size:20px}
+.chip.coin{background:radial-gradient(circle at 35% 30%,#ffe89a,var(--gold) 60%,var(--gold-deep));color:#4a3a08;box-shadow:0 0 18px rgba(245,197,66,.5)}
+.chip.skim{background:linear-gradient(180deg,#b23a27,var(--red));color:#fff}
+.chip.clean{background:linear-gradient(180deg,#2bbd7c,var(--green));color:#04231a}
+.legend-item div p{font-size:13px}
+.legend-item strong{color:var(--paper);font-size:14px}
+
+/* the four skim categories (the "tell") */
+.skimcats{display:flex;flex-wrap:wrap;gap:8px}
+.skimcat{font:700 11px/1 var(--font);letter-spacing:.01em;color:#ffd6cd;
+  background:linear-gradient(180deg,rgba(178,58,39,.9),rgba(228,87,61,.9));
+  border:1px solid rgba(255,150,130,.4);padding:8px 11px;border-radius:9px;display:inline-flex;align-items:center;gap:6px}
+.note{font-size:12.5px;color:var(--paper-dim);background:rgba(0,0,0,.18);border:1px solid var(--line);
+  border-radius:10px;padding:11px 13px;line-height:1.5}
+.note strong{color:var(--paper)}
+
+/* results */
+.result-score{text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.result-score .big{font:800 clamp(46px,15vw,72px)/1 var(--mono);color:var(--gold);letter-spacing:-.02em}
+.result-score .of{font-size:14px;color:var(--paper-dim);letter-spacing:.02em}
+.result-verdict{font:700 17px/1.3 var(--font);text-align:center}
+.result-stats{display:flex;gap:10px;justify-content:center}
+.stat{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:11px;padding:11px 8px;text-align:center}
+.stat b{display:block;font:800 20px/1 var(--mono);color:var(--paper)}
+.stat span{font-size:11px;color:var(--paper-dim);letter-spacing:.04em;text-transform:uppercase}
+
+/* form */
+form{display:flex;flex-direction:column;gap:13px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font:600 13px/1 var(--font);color:var(--paper);letter-spacing:.01em}
+.field input{font:500 16px/1 var(--font);padding:13px 13px;border-radius:11px;color:var(--paper);
+  background:rgba(8,20,32,.7);border:1px solid var(--card-brd);width:100%}
+.field input::placeholder{color:#6d8494}
+.field.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field.two .field{gap:6px}
+.err{color:#ff9d8a;font-size:12px;min-height:0}
+.field input[aria-invalid="true"]{border-color:var(--red)}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--paper-dim);line-height:1.4}
+.consent input{margin-top:2px;width:18px;height:18px;flex:0 0 auto;accent-color:var(--gold)}
+.consent a{color:var(--gold)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* leaderboard */
+.lb{width:100%;display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto}
+.lb-row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;
+  padding:11px 12px;border-radius:11px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.lb-row .rank{font:800 14px/1 var(--mono);color:var(--paper-dim);text-align:center}
+.lb-row .who{font-weight:600;font-size:14px}
+.lb-row .who small{display:block;color:var(--paper-dim);font-weight:500;font-size:12px}
+.lb-row .sc{font:800 16px/1 var(--mono);color:var(--gold)}
+.lb-row.me{background:rgba(245,197,66,.1);border-color:rgba(245,197,66,.45)}
+.lb-empty{color:var(--paper-dim);font-size:14px;text-align:center;padding:18px}
+
+/* footer / legal chrome */
+#footer{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  display:none;background:linear-gradient(0deg,rgba(4,12,20,.94),rgba(4,12,20,0));
+  font-size:10.5px;line-height:1.4;color:#6f8494;text-align:center}
+#footer.show{display:block}
+#footer .auth{color:#8ea3b2;font-weight:600}
+#footer a{color:#8ea3b2}
+.legal-block{font-size:11.5px;color:var(--paper-dim);line-height:1.5;background:rgba(0,0,0,.2);
+  border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.legal-block strong{color:var(--paper)}
+
+/* misc */
+.mini{font-size:12px;color:var(--paper-dim);text-align:center}
+
+/* loading */
+#screen-loading{background:var(--ink)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:20px}
+.loader-coin{width:64px;height:64px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffe89a,var(--gold) 55%,var(--gold-deep));
+  box-shadow:0 0 40px rgba(245,197,66,.6);display:grid;place-items:center;
+  font:800 30px/1 var(--font);color:#4a3a08;animation:bob 1.4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(-6px) rotate(-4deg)}50%{transform:translateY(6px) rotate(4deg)}}
+.loader-bar{width:180px;height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.loader-bar i{display:block;height:100%;width:0;background:var(--gold);border-radius:999px;transition:width .2s linear}
+.loader-txt{font:600 12px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-dim)}
+
+@media (prefers-reduced-motion:reduce){
+  .screen.show{animation:none}
+  .loader-coin{animation:none}
+}
+html[data-motion="off"] .loader-coin{animation:none}
+html[data-motion="off"] .screen.show{animation:none}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="field">
+    <canvas id="game" aria-hidden="true"></canvas>
+
+    <!-- Live region for screen-reader game state -->
+    <div id="live" class="sr-only" aria-live="polite" role="status"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-row">
+        <span class="level-pill" id="hud-level">The Tender Process</span>
+        <span class="streak-pill" id="hud-streak">CLEAN ×0</span>
+      </div>
+      <div class="hud-row">
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="meter-label">Reaching public infrastructure</span>
+            <span class="meter-val" id="hud-money">$100<small>/100</small></span>
+          </div>
+          <div class="meter-bar"><div class="meter-fill" id="hud-fill"></div></div>
+        </div>
+      </div>
+      <div class="hud-row">
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="meter-label">Audit window</span>
+            <span class="meter-val time" id="hud-time">7.0s</span>
+          </div>
+          <div class="meter-bar thin"><div class="meter-fill time" id="hud-timefill"></div></div>
+        </div>
+      </div>
+      <div class="progress-line"><div class="progress-inner" id="hud-progress"></div></div>
+    </div>
+
+    <!-- Post the ledger (shown during the scan phase) -->
+    <button class="btn btn-primary" id="btn-post">Post the ledger<span class="count" id="post-count">0</span></button>
+
+    <!-- Toggles -->
+    <div id="toggles">
+      <button class="toggle" id="t-sound" aria-pressed="false" title="Sound (off)" aria-label="Toggle sound"></button>
+      <button class="toggle" id="t-motion" aria-pressed="false" title="Reduce motion" aria-label="Toggle reduced motion"></button>
+      <button class="toggle" id="t-contrast" aria-pressed="false" title="High contrast" aria-label="Toggle high contrast"></button>
+      <button class="toggle" id="t-pause" title="Pause" aria-label="Pause game" style="display:none"></button>
+    </div>
+
+    <!-- LOADING -->
+    <section id="screen-loading" class="screen show" aria-label="Loading">
+      <div class="loader">
+        <div class="loader-coin">$</div>
+        <div class="loader-bar"><i id="load-bar"></i></div>
+        <div class="loader-txt">Opening the ledger…</div>
+      </div>
+    </section>
+
+    <!-- TITLE -->
+    <section id="screen-title" class="screen" aria-label="Start screen">
+      <div class="card">
+        <span class="eyebrow">A transparency mini-game</span>
+        <h1 class="title">Follow the <span class="accent">Money</span></h1>
+        <div class="subtitle">Audit the Ledger</div>
+        <p class="lead" id="framing-fact"></p>
+        <p id="framing-plan" style="font-size:13px"></p>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-play">Play — audit the ledger</button>
+          <button class="btn btn-ghost" id="btn-how">How to play</button>
+        </div>
+        <div class="controls-hint">
+          <span>Tap the <span class="key" style="color:var(--red)">skims</span></span>
+          <span><span class="key">↑</span><span class="key">↓</span> <span class="key">space</span> to flag</span>
+          <span><span class="key">P</span> to post</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section id="screen-howto" class="screen" aria-label="How to play">
+      <div class="card">
+        <span class="eyebrow">How to play</span>
+        <h2>Read the ledger. Flag the skims.</h2>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="chip coin">$</div>
+            <div><strong>A taxpayer dollar flows through each page</strong><p>Every ledger page is a batch of subcontract line items it must clear.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip skim">▼</div>
+            <div><strong>Tap the skims to flag them</strong><p>Some line items are skims. Flag one and that cut is blocked.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip clean">✓</div>
+            <div><strong>Leave the honest lines alone</strong><p>Over-flag a legitimate payment and you hold it up — a small cost.</p></div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>The tell:</strong> a line item is a <span style="color:#ff9d8a">skim</span> when its category is one of these —
+          <div class="skimcats" id="howto-skimcats" style="margin-top:9px"></div>
+        </div>
+        <p class="mini">Post before the <strong style="color:var(--sky)">audit window</strong> closes. Whatever you don't catch is skimmed off the dollar. Whatever reaches <strong style="color:var(--paper)">Public Infrastructure</strong> is your score.</p>
+        <button class="btn btn-primary" id="btn-how-start">Start the audit</button>
+      </div>
+    </section>
+
+    <!-- TRANSITION -->
+    <section id="screen-transition" class="screen" aria-label="Next level">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow" id="tr-eyebrow">Level 2</span>
+        <h2 id="tr-name">The Subcontract Chain</h2>
+        <p id="tr-desc"></p>
+        <div class="result-score" style="margin:2px 0">
+          <span class="of">Still in the dollar</span>
+          <span class="big" id="tr-carry" style="font-size:clamp(30px,10vw,44px)">$100</span>
+        </div>
+        <button class="btn btn-primary" id="btn-transition">Continue the audit</button>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="screen-pause" class="screen" aria-label="Paused">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow">Paused</span>
+        <h2>Take a breath</h2>
+        <div class="btnset" style="max-width:280px">
+          <button class="btn btn-primary" id="btn-resume">Resume</button>
+          <button class="btn btn-ghost" id="btn-restart">Restart run</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="screen-results" class="screen" aria-label="Results">
+      <div class="card">
+        <span class="eyebrow" id="res-eyebrow">Audit complete</span>
+        <div class="result-score">
+          <span class="big" id="res-score">$0</span>
+          <span class="of">of every $100 made it through</span>
+        </div>
+        <p class="result-verdict" id="res-verdict"></p>
+        <div class="result-stats">
+          <div class="stat"><b id="res-caught">0</b><span>Skims caught</span></div>
+          <div class="stat"><b id="res-best">0</b><span>Best streak</span></div>
+          <div class="stat"><b id="res-missed">0</b><span>Skimmed</span></div>
+        </div>
+        <div class="attributed" id="res-citation"></div>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-leaderboard">Add my score to the board</button>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="btn-share">Share</button>
+            <button class="btn btn-ghost" id="btn-replay">Play again</button>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy" href="#" target="_blank" rel="noopener">Our integrity plan</a>
+          </div>
+        </div>
+        <div class="legal-block" id="res-disclaimer"></div>
+      </div>
+    </section>
+
+    <!-- FORM -->
+    <section id="screen-form" class="screen" aria-label="Join the leaderboard">
+      <div class="card">
+        <span class="eyebrow">Add your score</span>
+        <h2>Join the board</h2>
+        <p style="font-size:13px">Your score will show as first name + postcode. <span id="form-privacy"></span></p>
+        <form id="lead-form" novalidate autocomplete="on">
+          <div class="field two">
+            <div class="field">
+              <label for="f-first">First name</label>
+              <input id="f-first" name="fname" autocomplete="given-name" maxlength="40" inputmode="text" />
+              <span class="err" id="e-first"></span>
+            </div>
+            <div class="field">
+              <label for="f-last">Last name</label>
+              <input id="f-last" name="lname" autocomplete="family-name" maxlength="40" />
+              <span class="err" id="e-last"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-email">Email</label>
+            <input id="f-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="120" />
+            <span class="err" id="e-email"></span>
+          </div>
+          <div class="field">
+            <label for="f-postcode">Postcode</label>
+            <input id="f-postcode" name="postcode" inputmode="numeric" maxlength="4" pattern="\d{4}" />
+            <span class="err" id="e-postcode"></span>
+          </div>
+          <!-- honeypot -->
+          <div class="hp" aria-hidden="true"><label>Website<input id="f-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <label class="consent">
+            <input type="checkbox" id="f-consent" />
+            <span id="consent-label"></span>
+          </label>
+          <span class="err" id="e-consent"></span>
+          <button class="btn btn-primary" type="submit" id="btn-submit">Submit &amp; see the board</button>
+          <button class="btn btn-ghost" type="button" id="btn-skip">Skip — just show the board</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="screen-leaderboard" class="screen" aria-label="Leaderboard">
+      <div class="card">
+        <span class="eyebrow">Leaderboard</span>
+        <h2>Who got the most through</h2>
+        <div class="lb" id="lb-list"></div>
+        <p class="mini" id="lb-note"></p>
+        <div class="btnset">
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate2" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy2" href="#" target="_blank" rel="noopener">Our integrity plan</a>
+          </div>
+          <button class="btn btn-ghost" id="btn-replay2">Play again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER: legal chrome -->
+    <footer id="footer">
+      <div class="auth" id="foot-auth"></div>
+      <div id="foot-disclaimer"></div>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+/* ============================================================================
+   1) CONTENT  —  SINGLE SOURCE OF TRUTH FOR EVERY FACTUAL CLAIM
+   --------------------------------------------------------------------------
+   >>> LEGAL / COMMS REVIEW HAPPENS HERE. <<<
+   Everything with any factual weight is in this one object. Figures ship as
+   clearly-marked placeholders until legal supplies signed-off wording.
+   Each factual figure carries its own source + date + signoff flag.
+   Guardrails (enforced by content, per PRD):
+     - No real, identifiable person / company / union named or caricatured.
+     - Skim destinations use ONLY the generic category labels below.
+     - Clean line items use ONLY the generic category labels below (no brands).
+     - No depiction of violence, drugs, extortion, or exploitation.
+     - Every displayed real-world figure shows its source in the same view.
+   NOTE ON LEDGER CONTENT: the per-line dollar amounts and reference codes shown
+   in play are illustrative game content in a *generic* ledger — not real-world
+   statistics or claims about any entity (the disclaimer makes this explicit).
+   The only real-world figure is CONTENT.citation, which is fully attributed.
+   ========================================================================== */
+const CONTENT = {
+  // Framing (top of game). "Fact" line is attributed, not asserted.
+  framingFact:
+    "A parliamentary inquiry has heard allegations that billions in Big Build " +
+    "funding may have been diverted through corrupt subcontracting.",
+  framingPlan:
+    "[POLICY HOOK PENDING] — the Liberal Party’s plan for transparency and " +
+    "accountability in major projects.",
+
+  // Approved generic SKIM-destination labels (NO real entities). These are the
+  // categories that make a line item a skim — the pattern the player learns.
+  pocketLabels: ["Ghost Shift", "Compromised Labour-Hire Firm", "Shell Company", "Inflated Invoice"],
+
+  // Approved generic CLEAN line-item categories (NO real entities, no brands).
+  // Legitimate construction/infrastructure ledger categories only. Kept strictly
+  // DISJOINT from pocketLabels so the audit rule stays honest and inspectable:
+  // a line item is a skim iff its category is one of the four skim labels above.
+  cleanLabels: [
+    "Certified Payroll", "Materials Supply", "Plant & Equipment Hire", "Site Preparation",
+    "Traffic Management", "Concrete Works", "Surveying & Design", "Safety Compliance",
+    "Electrical Fit-out", "Drainage Works", "Quality Assurance", "Site Remediation",
+    "Steel Fabrication", "Landscaping", "Waste Removal", "Scaffolding Hire",
+  ],
+
+  // Reference-code prefixes — pure visual flavour, non-identifying.
+  refPrefixes: ["TXN", "INV", "PO", "WO", "LN"],
+
+  // Levels
+  levels: {
+    l1: { name: "The Tender Process",    desc: "Short pages, plenty of time. Learn the four skim categories." },
+    l2: { name: "The Subcontract Chain", desc: "The layers multiply — longer pages, more skims, less time to scan." },
+    bonus: { name: "How It’s Supposed to Work", desc: "One clean page, nothing to flag. This is what a clean project looks like." },
+  },
+
+  // The headline attributed statistic on the results screen.
+  // NOTHING here is asserted as the party's own finding.
+  citation: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",         // e.g. "up to $15 billion"
+    framing: "of Big Build costs may be linked to union-driven corruption and " +
+             "organised-crime infiltration — a figure the Victorian Government disputes.",
+    source:  "[SOURCE PENDING]",                          // e.g. "report to the Qld parliamentary inquiry / named outlet"
+    date:    "[DATE OF CITED REPORT PENDING]",
+    signoff: "PENDING",                                   // → reviewer name + date at the gate
+  },
+
+  // Corruption-specific disclaimer (distinct from the other games' fiction disclaimers).
+  disclaimer:
+    "This game depicts a generic subcontracting process. It does not depict any " +
+    "real person, company, or organisation. The cited allegations are attributed " +
+    "to their sources and have not been proven in any court.",
+
+  // Electoral authorisation line — legally required for electoral matter.
+  authorisation: "Authorised by [NAME PENDING], [PARTY & ADDRESS PENDING].",
+
+  // Lead-capture collection statement (privacy).
+  privacy:
+    "We collect your details to contact you about this campaign. You can opt out " +
+    "any time. See our [collection statement — LINK PENDING].",
+  consentLabel:
+    "I agree to be contacted and to the collection statement above. [WORDING PENDING LEGAL SIGN-OFF]",
+
+  // CTAs — placeholder hrefs, clearly not live.
+  donateUrl: "#donate-url-pending",
+  policyUrl: "#integrity-policy-url-pending",
+
+  // Share text (neutral).
+  shareText: (score) =>
+    `I got $${score} of every $100 through in "Follow the Money — Audit the Ledger". How many skims can you catch?`,
+};
+
+/* ============================================================================
+   2) THEME + SMALL HELPERS
+   ========================================================================== */
+const COL = {
+  ink:"#0B1B2B", paper:"#EAF1F5", dim:"#9DB2C0",
+  gold:"#F5C542", goldLite:"#FFE89A", goldDeep:"#C9971F",
+  red:"#E4573D", redDeep:"#8F2C1C", green:"#3DDC91", greenDeep:"#1C7A54",
+  amber:"#F2B33D", sky:"#7FD3FF",
+};
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const choice=a=>a[Math.floor(Math.random()*a.length)];
+const easeOutCubic=t=>1-Math.pow(1-t,3);
+const $=id=>document.getElementById(id);
+const fmtMoney=n=>"$"+Math.round(n).toLocaleString("en-AU");
+
+/* ============================================================================
+   3) PERSISTENT SETTINGS (sound / motion / contrast)  — shared across the suite
+   ========================================================================== */
+const store = {
+  get(k,d){ try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d} },
+  set(k,v){ try{localStorage.setItem(k,JSON.stringify(v))}catch{} },
+};
+const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const settings = {
+  sound:    store.get("ftm_sound", false),
+  motion:   store.get("ftm_motion", prefersReducedMotion ? "off" : "on"),
+  contrast: store.get("ftm_contrast", false),
+};
+const motionOn = () => settings.motion === "on";
+
+/* ============================================================================
+   4) AUDIO — WebAudio, muted by default, lazy-init on first gesture.
+   Every cue has a redundant visual, so sound-off loses no information.
+   ========================================================================== */
+const Sound = (()=>{
+  let ctx=null, master=null, ready=false;
+  function init(){
+    if(ready) return;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=.5; master.connect(ctx.destination); ready=true;
+    }catch{}
+  }
+  function tone(freq,dur,type="sine",vol=.3,slideTo=null){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime;
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.01);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.02);
+  }
+  return {
+    init,
+    flag(){ tone(560,.05,"triangle",.07,700) },        // soft click when flagging a line
+    unflag(){ tone(340,.05,"triangle",.06,240) },      // lower click when un-flagging
+    catch(){ tone(660,.09,"sine",.16,990); setTimeout(()=>tone(990,.12,"sine",.12),40) }, // caught a skim
+    skim(){ tone(150,.18,"sawtooth",.16,60) },          // a skim got through
+    held(){ tone(300,.10,"sine",.10,220) },             // false flag / delayed payment
+    post(){ tone(480,.08,"square",.08,360) },           // posting the ledger
+    level(){ tone(440,.12,"sine",.14,660); setTimeout(()=>tone(660,.18,"sine",.12),90) },
+    win(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.35,"sine",.14),i*90)) },
+    lose(){ tone(200,.5,"sine",.14,90) },
+  };
+})();
+
+/* ============================================================================
+   5) CANVAS + RESPONSIVE SCALER
+   ========================================================================== */
+const canvas=$("game"), ctx=canvas.getContext("2d");
+let W=0,H=0,DPR=1;
+function resize(){
+  W=Math.max(1,canvas.clientWidth); H=Math.max(1,canvas.clientHeight);
+  DPR=Math.min(window.devicePixelRatio||1, 2.5);
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  layoutPage();
+}
+
+/* ============================================================================
+   6) PARTICLES + FLOATING TEXT (pooled)
+   ========================================================================== */
+const particles=[]; const POOL_MAX=460;
+function spawnParticles(x,y,color,count,opts={}){
+  if(!motionOn()) count=Math.min(count,4);
+  for(let i=0;i<count;i++){
+    if(particles.length>=POOL_MAX) break;
+    const a=opts.angle!=null?opts.angle+rand(-.6,.6):rand(0,Math.PI*2);
+    const sp=rand(opts.spMin??40,opts.spMax??220);
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp - (opts.lift||0),
+      life:rand(.4,.9),max:.9,size:rand(1.6,4.2),color,g:opts.g??140});
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.life-=dt; if(p.life<=0){particles.splice(i,1);continue}
+    p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.98;
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha=clamp(p.life/p.max,0,1); ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+const floaters=[];
+function spawnFloater(x,y,text,color){ floaters.push({x,y,text,color,life:1.2,max:1.2}); }
+function updateFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=32*dt; if(f.life<=0) floaters.splice(i,1); }
+}
+function drawFloaters(){
+  ctx.textAlign="center"; ctx.font="800 16px "+getMono();
+  for(const f of floaters){
+    ctx.globalAlpha=clamp(f.life/f.max,0,1);
+    ctx.fillStyle="rgba(0,0,0,.5)"; ctx.fillText(f.text,f.x+1,f.y+1);
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+function getMono(){ return 'ui-monospace,"Cascadia Code",Menlo,Consolas,monospace'; }
+function getSans(){ return 'ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'; }
+
+/* ============================================================================
+   7) LEVEL DATA (difficulty is data-driven & provable from these numbers)
+   --------------------------------------------------------------------------
+   pages    : number of ledger pages in the level
+   rowsMin/Max : line items per page (more rows = more to scan)
+   skimsMin/Max: skims hidden per page (clamped to leave >=1 clean row)
+   time     : seconds in the audit window per page (less = harder)
+   skimCut  : base dollars a MISSED skim takes off the running $100
+   falseFlagPen : dollars a wrongly-flagged clean line costs ("payment held up")
+   Escalation L1 -> L2 is verifiable straight from the numbers:
+     rows 5-6 -> 7-9, time 7.0s -> 5.5s, skims <=2 -> <=3, pages 3 -> 4.
+   ========================================================================== */
+const LEVELS = [
+  { key:"l1", ...CONTENT.levels.l1, pages:3, rowsMin:5, rowsMax:6, skimsMin:1, skimsMax:2, time:7.0, skimCut:9,   falseFlagPen:3 },
+  { key:"l2", ...CONTENT.levels.l2, pages:4, rowsMin:7, rowsMax:9, skimsMin:2, skimsMax:3, time:5.5, skimCut:11,  falseFlagPen:4 },
+];
+const BONUS = { key:"bonus", ...CONTENT.levels.bonus, pages:1, rowsMin:6, rowsMax:6, skims:0, time:6.0, skimCut:0, falseFlagPen:3 };
+
+/* ============================================================================
+   8) GAME STATE
+   ========================================================================== */
+let uid = 0;
+const game = {
+  state:"loading",           // loading|title|howto|playing|transition|pause|results|form|leaderboard
+  levelIdx:0, pageIdx:0, bonus:false,
+  value:100,                 // the surviving dollar (= score); continuous across pages & levels
+  page:null,                 // current ledger page (see buildPage)
+  cursor:0,                  // keyboard focus row
+  streak:0, bestStreak:0, caught:0, missed:0, falseFlags:0, cleanPages:0,
+  elapsed:0,
+  bgScroll:0, shake:0, hitstop:0, timeScale:1, flash:0, flashCol:COL.red, goldShower:0, infraPulse:0,
+  lastPlayerId:null, _pendingLevel:null, _resumeState:null,
+};
+function curLevel(){ return game.bonus ? BONUS : (LEVELS[game.levelIdx] || LEVELS[0]); }
+
+/* ---- Screen (DOM) management --------------------------------------------- */
+const SCREENS=["loading","title","howto","transition","pause","results","form","leaderboard"];
+function showScreen(name){ for(const s of SCREENS){ $("screen-"+s).classList.toggle("show", s===name); } }
+function hideAllScreens(){ for(const s of SCREENS) $("screen-"+s).classList.remove("show"); }
+function setHUD(on){ $("hud").classList.toggle("show", on); $("t-pause").style.display=on?"grid":"none"; }
+function setFooter(on){ $("footer").classList.toggle("show", on); }
+function say(msg){ $("live").textContent=msg; }
+
+/* ============================================================================
+   9) LEDGER GEOMETRY  (static grid — no scrolling engine, no collision system)
+   ========================================================================== */
+function ledgerBounds(){
+  const top    = Math.max(122, H*0.205);                 // clears the 3-meter HUD
+  const bottom = H - Math.max(104, H*0.145);             // leaves room for Post button + infra strip
+  return { top, bottom };
+}
+function layoutPage(){
+  if(!game.page) return;
+  const cells=game.page.cells, n=cells.length;
+  const { top, bottom } = ledgerBounds();
+  const headerH=24;
+  const areaTop=top+headerH, areaH=Math.max(120, bottom-areaTop);
+  // Preferred sizing (comfortable touch targets), then GUARANTEE the whole block
+  // fits inside [areaTop, bottom] so rows never spill into the Post button / infra
+  // strip: shrink the gap first, then the row height, as a last resort on tiny screens.
+  let gap=clamp(areaH*0.02, 7, 12);
+  let rowH=clamp((areaH-gap*(n-1))/n, 44, 84);
+  if(rowH*n+gap*(n-1) > areaH){
+    gap=Math.max(3, (areaH-rowH*n)/Math.max(1,n-1));      // close the gaps
+    if(rowH*n+gap*(n-1) > areaH) rowH=(areaH-gap*(n-1))/n; // then trim row height to fit exactly
+  }
+  const margin=Math.max(14, W*0.05), w=W-margin*2;
+  const block=rowH*n+gap*(n-1);
+  let y=areaTop + Math.max(0,(areaH-block)/2);              // center only when there's slack
+  for(const c of cells){ c.x=margin; c.y=y; c.w=w; c.h=rowH; y+=rowH+gap; }
+  game.page.headerY=top;
+}
+function cellAt(px,py){
+  if(!game.page) return -1;
+  const cells=game.page.cells;
+  for(let i=0;i<cells.length;i++){ const c=cells[i]; if(px>=c.x&&px<=c.x+c.w&&py>=c.y&&py<=c.y+c.h) return i; }
+  return -1;
+}
+function infraY(){ return H - Math.max(52, H*0.072); }
+
+/* ============================================================================
+   10) PAGE CONSTRUCTION
+   ========================================================================== */
+function makeRef(){ return choice(CONTENT.refPrefixes)+"-"+randInt(1000,9999); }
+function makeAmount(){ return randInt(3,94)*100 + randInt(0,9)*10; }   // $300 – $9,490, illustrative only
+
+function buildPage(L){
+  const rows = randInt(L.rowsMin, L.rowsMax);
+  let skims = (L.skims!=null) ? L.skims : randInt(L.skimsMin, L.skimsMax);
+  skims = clamp(skims, (L.skims!=null?0:1), rows-1);     // always keep >=1 clean row; >=1 skim on main levels
+
+  // choose which row indices are skims
+  const idxs=[...Array(rows).keys()]; const skimSet=new Set();
+  for(let k=0;k<skims;k++){ const j=randInt(0,idxs.length-1); skimSet.add(idxs.splice(j,1)[0]); }
+
+  const usedClean=new Set();
+  const cells=[];
+  for(let i=0;i<rows;i++){
+    const isSkim=skimSet.has(i);
+    let label;
+    if(isSkim){ label=choice(CONTENT.pocketLabels); }           // skim labels may repeat (realistic)
+    else{
+      // prefer distinct clean categories per page for readability
+      label=choice(CONTENT.cleanLabels);
+      for(let t=0;t<8 && usedClean.has(label);t++) label=choice(CONTENT.cleanLabels);
+      usedClean.add(label);
+    }
+    cells.push({
+      i, id:uid++, skim:isSkim, label, ref:makeRef(), amount:makeAmount(),
+      flagged:false,
+      x:0,y:0,w:0,h:0, appearT:i*0.035,
+      revealed:false, outcome:null, tookAmount:0, revT:0,
+    });
+  }
+  game.page = {
+    cells, rows, skims,
+    phase:"scanning",                 // scanning | resolving | done
+    time:L.time, timeLeft:L.time, timeAtPost:L.time,
+    resolveIdx:0, resolveT:0, doneT:0,
+    pageCaught:0, pageMissed:0, pageFalse:0,
+  };
+  game.cursor=clamp(game.cursor,0,rows-1);
+  layoutPage();
+  $("hud-level").textContent = `${L.name} · ${game.pageIdx+1}/${L.pages}`;
+  updateHUD(); syncPostBtn();
+  say(`${L.name}, page ${game.pageIdx+1} of ${L.pages}. ${rows} line items. `+
+      (L.skims===0 ? "A clean page — nothing to flag." : `Find and flag the skims before the audit window of ${L.time.toFixed(0)} seconds closes.`));
+}
+
+/* ============================================================================
+   11) FLOW / STATE TRANSITIONS
+   ========================================================================== */
+function goTitle(){
+  game.state="title"; hideAllScreens(); showScreen("title"); setHUD(false); setFooter(true); syncPostBtn();
+  game.page=null;
+}
+function goHowTo(){ game.state="howto"; showScreen("howto"); setFooter(false); }
+
+function startRun(){
+  game.value=100; game.levelIdx=0; game.pageIdx=0; game.bonus=false; game.lastPlayerId=null;
+  game.streak=0; game.bestStreak=0; game.caught=0; game.missed=0; game.falseFlags=0; game.cleanPages=0;
+  beginLevel(0);
+}
+function beginLevel(idx){
+  game.levelIdx=idx; game.bonus=false; game.pageIdx=0;
+  particles.length=0; floaters.length=0;
+  game.state="playing"; hideAllScreens(); setHUD(true); setFooter(false);
+  updateStreakHUD();
+  Sound.level();
+  buildPage(LEVELS[idx]);
+}
+function beginBonus(){
+  game.bonus=true; game.pageIdx=0;
+  particles.length=0; floaters.length=0;
+  game.state="playing"; hideAllScreens(); setHUD(true); setFooter(false);
+  updateStreakHUD();
+  Sound.level();
+  buildPage(BONUS);
+}
+function endLevel(){
+  if(game.bonus) return finish();
+  const next=game.levelIdx+1;
+  if(next<LEVELS.length) showTransition(next); else beginBonus();
+}
+function showTransition(nextIdx){
+  game.state="transition"; setHUD(false); hideAllScreens(); showScreen("transition"); syncPostBtn();
+  const L=LEVELS[nextIdx];
+  $("tr-eyebrow").textContent="Level "+(nextIdx+1);
+  $("tr-name").textContent=L.name; $("tr-desc").textContent=L.desc;
+  $("tr-carry").textContent=fmtMoney(game.value);
+  game._pendingLevel=nextIdx;
+  say(`${L.name}. ${Math.round(game.value)} dollars still in play.`);
+}
+function advancePage(){
+  game.pageIdx++;
+  if(game.value<=0){ game.value=0; return finish(); }
+  const L=curLevel();
+  if(game.pageIdx < L.pages) buildPage(L);
+  else endLevel();
+}
+function finish(){
+  game.state="results"; setHUD(false); setFooter(true); hideAllScreens(); syncPostBtn();
+  renderResults(); showScreen("results");
+  if(game.value>=70){ Sound.win(); game.goldShower=motionOn()?2.2:0; } else Sound.lose();
+}
+
+/* ============================================================================
+   12) INPUT  — flag/unflag a line item (discrete). No steering, no motion aim.
+   ========================================================================== */
+function toggleFlag(i, viaKeyboard){
+  const p=game.page; if(!p || p.phase!=="scanning") return;
+  if(i<0 || i>=p.cells.length) return;
+  const c=p.cells[i]; c.flagged=!c.flagged; c.pop=1;
+  game.cursor=i;
+  if(c.flagged){ Sound.flag(); spawnParticles(c.x+c.w-24, c.y+c.h/2, COL.amber, motionOn()?7:2, {spMin:20,spMax:90}); }
+  else Sound.unflag();
+  syncPostBtn();
+  say(`${c.flagged?"Flagged":"Unflagged"} ${c.label}, line ${i+1}. `+ (viaKeyboard?describeCell(c):"") );
+}
+function describeCell(c){
+  return `Reference ${c.ref}, ${fmtMoney(c.amount)}. ${c.flagged?"Flagged as a skim.":"Not flagged."}`;
+}
+function moveCursor(dir){
+  const p=game.page; if(!p||p.phase!=="scanning") return;
+  game.cursor=clamp(game.cursor+dir, 0, p.cells.length-1);
+  const c=p.cells[game.cursor];
+  say(`Line ${game.cursor+1}: ${c.label}. ${describeCell(c)}`);
+}
+function postLedger(){
+  const p=game.page; if(!p || p.phase!=="scanning") return;
+  p.timeAtPost=p.timeLeft;
+  p.phase="resolving"; p.resolveIdx=0; p.resolveT=0;
+  syncPostBtn(); Sound.post();
+  say("Ledger posted. Checking each line…");
+}
+
+function pointerPos(e){
+  const r=canvas.getBoundingClientRect();
+  const cx=(e.touches?e.touches[0].clientX:e.clientX);
+  const cy=(e.touches?e.touches[0].clientY:e.clientY);
+  return { x:clamp(cx-r.left,0,W), y:clamp(cy-r.top,0,H) };
+}
+function onDown(e){
+  Sound.init();
+  if(game.state!=="playing") return;
+  const p=game.page; if(!p||p.phase!=="scanning") return;
+  const pos=pointerPos(e); const i=cellAt(pos.x,pos.y);
+  if(i>=0){ toggleFlag(i,false); e.preventDefault(); }
+}
+canvas.addEventListener("pointerdown",onDown);
+canvas.addEventListener("touchstart",onDown,{passive:false});
+
+window.addEventListener("keydown",e=>{
+  Sound.init();
+  const k=e.key;
+  if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","w","W","s","S"," "].includes(k)) e.preventDefault();
+  if(k==="Escape"){ if(game.state==="playing") pauseGame(); else if(game.state==="pause") resumeGame(); return; }
+  if(k==="Enter"){
+    if(game.state==="title"){ startRun(); return; }
+    if(game.state==="transition"){ $("btn-transition").click(); return; }
+  }
+  if(game.state==="playing" && game.page && game.page.phase==="scanning"){
+    if(k==="ArrowUp"||k==="ArrowLeft"||k==="w"||k==="W") moveCursor(-1);
+    else if(k==="ArrowDown"||k==="ArrowRight"||k==="s"||k==="S") moveCursor(1);
+    else if(k===" "||k==="Enter") toggleFlag(game.cursor,true);
+    else if(/^[1-9]$/.test(k)){ const i=parseInt(k,10)-1; if(i<game.page.cells.length) toggleFlag(i,true); }
+    else if(k==="p"||k==="P") postLedger();
+  }
+});
+
+function pauseGame(){ if(game.state!=="playing")return; game._resumeState=game.state; game.state="pause"; setHUD(false); showScreen("pause"); syncPostBtn(); }
+function resumeGame(){ if(game.state!=="pause")return; game.state=game._resumeState||"playing"; hideAllScreens(); setHUD(true); syncPostBtn(); }
+
+/* ============================================================================
+   13) UPDATE
+   ========================================================================== */
+function update(dt){
+  const active = game.state==="playing";
+  game.bgScroll += dt * (active ? 16 : 22);
+  updateParticles(dt); updateFloaters(dt);
+  if(game.shake>0) game.shake=Math.max(0,game.shake-dt*3.2);
+  if(game.flash>0) game.flash=Math.max(0,game.flash-dt*2.4);
+  if(game.infraPulse>0) game.infraPulse=Math.max(0,game.infraPulse-dt*1.6);
+  if(game.goldShower>0){ game.goldShower-=dt; if(motionOn()&&Math.random()<.5) spawnParticles(rand(0,W),-6,choice([COL.gold,COL.goldLite]),1,{g:120,spMin:20,spMax:60,lift:-40}); }
+
+  // per-cell pop decay (flag stamp / reveal)
+  if(game.page){ for(const c of game.page.cells){ if(c.pop>0) c.pop=Math.max(0,c.pop-dt*3.4); c.appearT=Math.max(0,c.appearT-dt); if(c.revealed&&c.revT>0) c.revT=Math.max(0,c.revT-dt*2.6); } }
+
+  if(active) updatePlaying(dt);
+}
+
+function updatePlaying(dt){
+  const p=game.page; if(!p) return;
+  if(p.phase==="scanning"){
+    p.timeLeft=Math.max(0, p.timeLeft-dt);
+    // gentle screen-edge urgency in the last 2s (visual; sound stays off unless enabled)
+    if(p.timeLeft<=2 && motionOn() && Math.random()<.10) game.flash=Math.max(game.flash,.10), game.flashCol=COL.red;
+    if(p.timeLeft<=0) postLedger();
+    updateHUD();
+  } else if(p.phase==="resolving"){
+    p.resolveT-=dt;
+    if(p.resolveT<=0){
+      if(p.resolveIdx < p.cells.length){
+        const big=revealCell(p.cells[p.resolveIdx]);
+        p.resolveIdx++;
+        p.resolveT = motionOn()?0.13:0.03;
+        if(big && motionOn()) game.hitstop=0.06;
+      } else {
+        p.phase="done"; p.doneT=motionOn()?0.62:0.22; computePageBonus();
+      }
+    }
+    updateHUD();
+  } else if(p.phase==="done"){
+    p.doneT-=dt;
+    if(p.doneT<=0) advancePage();
+  }
+}
+
+// Reveal a single line's truth and apply its effect. Returns true on a "big" hit.
+function revealCell(c){
+  c.revealed=true; c.revT=1; c.pop=1;
+  const cx=c.x+c.w/2, cy=c.y+c.h/2;
+  if(c.skim){
+    if(c.flagged){
+      c.outcome="caught"; game.caught++; game.page.pageCaught++;
+      game.streak++; if(game.streak>game.bestStreak) game.bestStreak=game.streak;
+      spawnParticles(cx, cy, COL.green, motionOn()?12:3, {spMin:30,spMax:150});
+      // a saved mote travels down to Public Infrastructure
+      game.infraPulse=Math.min(1, game.infraPulse+0.6);
+      spawnFloater(cx, cy-6, "BLOCKED", "#8ff0c2");
+      Sound.catch(); updateStreakHUD();
+      return false;
+    } else {
+      c.outcome="missed"; game.missed++; game.page.pageMissed++; game.streak=0;
+      const cut=Math.min(game.value, (curLevel().skimCut||9)*rand(.82,1.16));
+      game.value=Math.max(0, game.value-cut); c.tookAmount=Math.round(cut);
+      if(motionOn()){
+        spawnParticles(cx, cy, COL.gold, 16, {angle:-Math.PI/2, spMin:120, spMax:300, g:60, lift:40});
+        game.shake=Math.min(1, game.shake + (cut>9?.9:.6));
+      }
+      game.flash=.6; game.flashCol=COL.red;
+      spawnFloater(cx, cy-6, "−"+fmtMoney(cut), "#ff9d8a");
+      Sound.skim(); updateStreakHUD();
+      return cut>9;
+    }
+  } else {
+    if(c.flagged){
+      c.outcome="falseflag"; game.falseFlags++; game.page.pageFalse++;
+      const pen=Math.min(game.value, (curLevel().falseFlagPen||3)*rand(.85,1.15));
+      game.value=Math.max(0, game.value-pen); c.tookAmount=Math.round(pen);
+      spawnParticles(cx, cy, COL.amber, motionOn()?6:2, {spMin:20,spMax:90});
+      spawnFloater(cx, cy-6, "HELD −"+fmtMoney(pen), "#ffd98a");
+      Sound.held();
+      return false;
+    } else {
+      c.outcome="clean";   // correct: left an honest line alone. no-op.
+      return false;
+    }
+  }
+}
+
+function computePageBonus(){
+  const p=game.page;
+  const perfect = (p.pageMissed===0 && p.pageFalse===0);
+  if(perfect){
+    game.cleanPages++;
+    // reward a clean, efficient audit with a small, capped recovery
+    if(game.value<100 && (p.skims>0 || p.pageCaught>0 || game.bonus)){
+      const eff = 3 * clamp(p.timeAtPost/Math.max(0.001,p.time), 0, 1);   // efficiency (unused window)
+      const amt = Math.min(100-game.value, 2 + eff);
+      if(amt>0.5){ game.value=Math.min(100,game.value+amt);
+        spawnFloater(W/2, infraY()-30, "CLEAN AUDIT +"+fmtMoney(amt), "#8ff0c2");
+        game.infraPulse=Math.min(1, game.infraPulse+0.5);
+      }
+    }
+    say(`Page clean. Every skim caught. ${Math.round(game.value)} dollars still on track.`);
+  } else {
+    say(`Page posted. Caught ${p.pageCaught} of ${p.skims} skims`+
+        (p.pageFalse?`, ${p.pageFalse} honest line${p.pageFalse>1?"s":""} held up`:"")+
+        `. ${Math.round(game.value)} dollars left.`);
+  }
+  updateHUD();
+}
+
+/* ---- HUD sync ------------------------------------------------------------- */
+function updateHUD(){
+  const v=Math.round(game.value);
+  $("hud-money").innerHTML=`${fmtMoney(v)}<small>/100</small>`;
+  const fill=$("hud-fill"); fill.style.width=game.value+"%";
+  fill.classList.toggle("flash", game.value<40);
+
+  const p=game.page;
+  const tLeft = p ? p.timeLeft : 0, tMax = p ? p.time : 1;
+  const low = p && p.phase==="scanning" && (tLeft/tMax)<0.34;
+  $("hud-time").textContent = (p?tLeft:0).toFixed(1)+"s";
+  $("hud-time").classList.toggle("low", !!low);
+  const tf=$("hud-timefill");
+  tf.style.width = clamp((tLeft/tMax)*100,0,100)+"%";
+  tf.classList.toggle("low", !!low);
+
+  // level progress = pages resolved within the level
+  const L=curLevel();
+  const done = game.pageIdx + (p && p.phase!=="scanning" ? 1 : 0);
+  $("hud-progress").style.width = clamp(done/L.pages,0,1)*100+"%";
+}
+function updateStreakHUD(){
+  const el=$("hud-streak");
+  if(game.streak>=2){ el.textContent="CAUGHT ×"+game.streak; el.classList.add("show"); }
+  else el.classList.remove("show");
+}
+function syncPostBtn(){
+  const show = game.state==="playing" && game.page && game.page.phase==="scanning";
+  const btn=$("btn-post"); btn.classList.toggle("show", !!show);
+  if(show){ const n=game.page.cells.filter(c=>c.flagged).length; $("post-count").textContent=n; }
+}
+
+/* ============================================================================
+   14) RENDER
+   ========================================================================== */
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(game.shake>0 && motionOn()){ const s=game.shake*7; ctx.translate(rand(-s,s),rand(-s,s)); }
+  drawBackground();
+  if(game.state==="playing") drawLedger();
+  drawParticles(); drawFloaters();
+  ctx.restore();
+  if(game.flash>0){
+    ctx.globalAlpha=game.flash*.5;
+    const g=ctx.createRadialGradient(W/2,H*0.5,H*.15,W/2,H*0.5,H*.8);
+    g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,game.flashCol);
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  }
+  drawVignette();
+}
+
+function drawBackground(){
+  const hc=settings.contrast;
+  ctx.fillStyle=hc?"#04101B":COL.ink; ctx.fillRect(0,0,W,H);
+  // faint ruled ledger lines (static texture; slow drift for life)
+  const gapY=44, off=(game.bgScroll%gapY);
+  ctx.strokeStyle=hc?"rgba(200,220,235,.09)":"rgba(157,178,192,.06)"; ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let y=-gapY+off; y<H+gapY; y+=gapY){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
+  ctx.stroke();
+  // a single vertical "column rule" like a real ledger
+  ctx.strokeStyle=hc?"rgba(200,220,235,.06)":"rgba(157,178,192,.05)";
+  ctx.beginPath(); ctx.moveTo(W*0.5,0); ctx.lineTo(W*0.5,H); ctx.stroke();
+
+  // destination strip at the very bottom — Public Infrastructure
+  const iy=infraY(), glow=0.12 + game.infraPulse*0.5;
+  const vg=ctx.createLinearGradient(0,iy-30,0,H);
+  vg.addColorStop(0,"rgba(61,220,145,0)"); vg.addColorStop(1,`rgba(61,220,145,${glow})`);
+  ctx.fillStyle=vg; ctx.fillRect(0,iy-30,W,H-(iy-30));
+  ctx.fillStyle=`rgba(157,178,192,${0.5+game.infraPulse*0.4})`; ctx.textAlign="center";
+  ctx.font="700 11px "+getMono(); ctx.fillText("▼  PUBLIC INFRASTRUCTURE  ▼", W/2, H-11);
+}
+
+function drawLedger(){
+  const p=game.page; if(!p) return;
+  const { top } = ledgerBounds();
+  // page header
+  ctx.textAlign="left"; ctx.fillStyle="rgba(157,178,192,.85)";
+  ctx.font="700 12px "+getMono();
+  const margin=Math.max(14,W*0.05);
+  ctx.fillText("LEDGER — PAGE "+(game.pageIdx+1)+"/"+curLevel().pages, margin, top+14);
+  ctx.textAlign="right"; ctx.fillStyle="rgba(157,178,192,.6)"; ctx.font="600 11px "+getMono();
+  const flagged=p.cells.filter(c=>c.flagged).length;
+  ctx.fillText(p.phase==="scanning" ? (flagged+" flagged") : "posted", W-margin, top+14);
+
+  for(let i=0;i<p.cells.length;i++) drawRow(p.cells[i], i, i===game.cursor);
+}
+
+function drawRow(c, i, focused){
+  const x=c.x, y=c.y, w=c.w, h=c.h, rr=12;
+  const appear = c.appearT>0 ? 1-clamp(c.appearT/0.5,0,1) : 1;
+  const pop = c.pop>0 ? 1+c.pop*0.03 : 1;
+  ctx.save();
+  ctx.globalAlpha = motionOn()? (0.15+0.85*appear) : 1;
+  if(pop!==1){ ctx.translate(x+w/2,y+h/2); ctx.scale(pop,pop); ctx.translate(-(x+w/2),-(y+h/2)); }
+
+  // body colour: neutral while scanning; truth revealed only after posting
+  let top="#12293b", bot="#0e2233", brd="rgba(157,178,192,.18)";
+  if(c.revealed){
+    if(c.outcome==="caught"){ top="#1c6a49"; bot="#12503a"; brd="rgba(61,220,145,.55)"; }
+    else if(c.outcome==="missed"){ top="#7a2a1c"; bot="#5c2016"; brd="rgba(228,87,61,.55)"; }
+    else if(c.outcome==="falseflag"){ top="#7a5a1c"; bot="#5c4416"; brd="rgba(242,179,61,.5)"; }
+    else { top="#0f2130"; bot="#0c1a26"; brd="rgba(157,178,192,.12)"; }   // clean, correctly ignored
+  } else if(c.flagged){
+    top="#2a2c1a"; bot="#211f10"; brd="rgba(242,179,61,.7)";
+  }
+  const grad=ctx.createLinearGradient(0,y,0,y+h);
+  grad.addColorStop(0,top); grad.addColorStop(1,bot);
+  roundRect(x,y,w,h,rr); ctx.fillStyle=grad; ctx.fill();
+  ctx.lineWidth=focused?2.5:1.4; ctx.strokeStyle= focused? "rgba(127,211,255,.9)" : brd;
+  roundRect(x+0.75,y+0.75,w-1.5,h-1.5,rr-1); ctx.stroke();
+
+  // flag stamp / focus glow
+  if(!c.revealed && c.flagged && motionOn()){
+    ctx.save(); ctx.globalAlpha=0.5; ctx.strokeStyle="rgba(242,179,61,.8)"; ctx.lineWidth=1.5;
+    roundRect(x+2,y+2,w-4,h-4,rr-2); ctx.stroke(); ctx.restore();
+  }
+
+  const padL=x+14, midY=y+h/2;
+  // line index
+  ctx.textAlign="left"; ctx.fillStyle="rgba(157,178,192,.6)"; ctx.font="700 12px "+getMono();
+  ctx.fillText(String(i+1).padStart(2,"0"), padL, midY+4);
+
+  // category label (the tell)
+  const labelX=padL+30;
+  ctx.fillStyle= c.revealed && c.outcome==="clean" ? "rgba(234,241,245,.6)" : "#EAF1F5";
+  ctx.font="700 14px "+getSans();
+  const labelMax = w-30-14-92;
+  ctx.fillText(fit(c.label, labelMax, "700 14px "+getSans()), labelX, midY - (h>52?6:2));
+
+  // ref + amount (flavour texture)
+  ctx.fillStyle="rgba(157,178,192,.7)"; ctx.font="600 11px "+getMono();
+  if(h>52) ctx.fillText(c.ref+"   ·   "+fmtMoney(c.amount), labelX, midY+14);
+
+  // right-hand state
+  const rx=x+w-14;
+  ctx.textAlign="right";
+  if(c.revealed){
+    let icon, txt, col;
+    if(c.outcome==="caught"){ icon="✓"; txt="BLOCKED"; col="#8ff0c2"; }
+    else if(c.outcome==="missed"){ icon="▼"; txt="−"+fmtMoney(c.tookAmount); col="#ff9d8a"; }
+    else if(c.outcome==="falseflag"){ icon="⚑"; txt="HELD"; col="#ffd98a"; }
+    else { icon="·"; txt=""; col="rgba(157,178,192,.5)"; }
+    ctx.fillStyle=col; ctx.font="800 15px "+getMono(); ctx.fillText(icon, rx, midY-(h>52?4:0));
+    if(txt && h>52){ ctx.font="700 10px "+getMono(); ctx.fillText(txt, rx, midY+13); }
+  } else if(c.flagged){
+    ctx.fillStyle="#ffd98a"; ctx.font="800 15px "+getSans(); ctx.fillText("⚑", rx, midY-(h>52?4:0));
+    if(h>52){ ctx.font="700 9px "+getMono(); ctx.fillText("FLAGGED", rx, midY+13); }
+  } else {
+    // subtle "tap to flag" affordance dot
+    ctx.fillStyle="rgba(157,178,192,.35)"; ctx.font="800 15px "+getSans(); ctx.fillText("○", rx, midY+4);
+  }
+  ctx.restore();
+}
+
+function drawVignette(){
+  const g=ctx.createRadialGradient(W/2,H/2,H*.35,W/2,H/2,H*.78);
+  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,.42)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+function roundRect(x,y,w,h,r){ w=Math.max(0,w); h=Math.max(0,h); r=Math.max(0,Math.min(r,w/2,h/2)); ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function fit(text,maxW,font){
+  ctx.font=font; if(ctx.measureText(text).width<=maxW) return text;
+  let t=text; while(t.length>1 && ctx.measureText(t+"…").width>maxW) t=t.slice(0,-1);
+  return t+"…";
+}
+
+/* ============================================================================
+   15) MAIN LOOP (fixed timestep)
+   ========================================================================== */
+new ResizeObserver(resize).observe($("field"));
+window.addEventListener("resize",resize);
+resize();
+
+let last=performance.now(), acc=0; const STEP=1/60;
+function frame(t){
+  if(canvas.clientWidth!==W||canvas.clientHeight!==H){ resize(); }
+  let dt=(t-last)/1000; last=t; if(dt>0.1)dt=0.1;
+  if(game.hitstop>0){ game.hitstop-=dt; }
+  else { acc+=dt*game.timeScale; let n=0; while(acc>=STEP && n<5){ update(STEP); acc-=STEP; n++; } if(acc>STEP*5)acc=0; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================================
+   16) RESULTS + LEADERBOARD RENDERING
+   ========================================================================== */
+function verdictFor(score){
+  if(score>=90) return "Nearly every dollar made it through. A clean audit.";
+  if(score>=70) return "Most of it survived — but the leaks add up.";
+  if(score>=45) return "Nearly half the dollar never reached the public.";
+  if(score>0)   return "Most of the dollar was skimmed before it arrived.";
+  return "The dollar was fully skimmed before it reached the public.";
+}
+function renderResults(){
+  const score=Math.round(game.value);
+  const el=$("res-score"); const dur=motionOn()?700:0, t0=performance.now();
+  (function tick(now){
+    const p=dur?clamp((now-t0)/dur,0,1):1;
+    el.textContent=fmtMoney(Math.round(easeOutCubic(p)*score));
+    if(p<1) requestAnimationFrame(tick);
+  })(t0);
+  $("res-verdict").textContent=verdictFor(score);
+  $("res-caught").textContent=game.caught;
+  $("res-best").textContent=game.bestStreak;
+  $("res-missed").textContent=game.missed;
+  const c=CONTENT.citation;
+  $("res-citation").innerHTML =
+    `<span class="pending">${esc(c.figure)}</span> ${esc(c.framing)}` +
+    `<span class="src">Source: ${esc(c.source)} · ${esc(c.date)}</span>`;
+  $("res-disclaimer").innerHTML="<strong>Disclaimer.</strong> "+esc(CONTENT.disclaimer);
+  say(`Result: ${score} dollars of every 100 made it through. ${game.caught} skims caught, ${game.missed} skimmed.`);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---- Leaderboard store: LOCAL now, REMOTE (Cloudflare) later --------------
+   Swap point for launch: implement RemoteLeaderboard against a serverless
+   endpoint (Cloudflare Pages Function + D1) and flip USE_REMOTE. PII stays
+   server-side there; this local store keeps data on-device only (demo/fallback).
+   -------------------------------------------------------------------------- */
+const USE_REMOTE=false;
+const LocalLeaderboard={
+  KEY:"ftm_audit_lb_v1",
+  all(){ return store.get(this.KEY,[]) || []; },
+  async top(n=10){ return this.all().slice(0,n); },
+  async submit(entry){
+    const list=this.all();
+    const rec={ id:(performance.now()+"_"+Math.random()).toString(),
+      first:entry.first, postcode:entry.postcode, score:entry.score, ts:Date.now(),
+      // last name + email are the *private* captured fields. On-device only here;
+      // in the Cloudflare build these go server-side and never to the public board.
+      _last:entry.last, _email:entry.email };
+    list.push(rec); list.sort((a,b)=>b.score-a.score);
+    const rank=list.findIndex(r=>r.id===rec.id)+1;
+    store.set(this.KEY, list.slice(0,100));
+    return { rank, id:rec.id, total:list.length };
+  },
+};
+const Leaderboard = USE_REMOTE ? null /* RemoteLeaderboard (launch) */ : LocalLeaderboard;
+
+async function renderLeaderboard(){
+  const rows=await Leaderboard.top(10);
+  const list=$("lb-list"); list.innerHTML="";
+  if(!rows.length){ list.innerHTML='<div class="lb-empty">No scores yet — you could be first.</div>'; }
+  rows.forEach((r,i)=>{
+    const div=document.createElement("div");
+    div.className="lb-row"+(r.id===game.lastPlayerId?" me":"");
+    div.innerHTML=`<span class="rank">${i+1}</span>`+
+      `<span class="who">${esc(r.first||"Player")}<small>Postcode ${esc(r.postcode||"—")}</small></span>`+
+      `<span class="sc">${fmtMoney(Math.round(r.score))}</span>`;
+    list.appendChild(div);
+  });
+  $("lb-note").textContent = USE_REMOTE ? "" :
+    "Scores are saved on this device (demo mode). A shared board is enabled at launch.";
+}
+
+/* ============================================================================
+   17) UI WIRING
+   ========================================================================== */
+$("framing-fact").textContent=CONTENT.framingFact;
+$("framing-plan").textContent=CONTENT.framingPlan;
+$("foot-auth").textContent=CONTENT.authorisation;
+$("foot-disclaimer").textContent=CONTENT.disclaimer;
+$("form-privacy").innerHTML=esc(CONTENT.privacy);
+$("consent-label").textContent=CONTENT.consentLabel;
+$("btn-donate").href=CONTENT.donateUrl; $("btn-donate2").href=CONTENT.donateUrl;
+$("btn-policy").href=CONTENT.policyUrl; $("btn-policy2").href=CONTENT.policyUrl;
+// render the four skim categories into the how-to "tell" legend
+$("howto-skimcats").innerHTML = CONTENT.pocketLabels.map(l=>`<span class="skimcat">▼ ${esc(l)}</span>`).join("");
+
+$("btn-play").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-how").onclick=goHowTo;
+$("btn-how-start").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-transition").onclick=()=>{ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); };
+$("btn-resume").onclick=resumeGame;
+$("btn-restart").onclick=()=>{ hideAllScreens(); startRun(); };
+$("t-pause").onclick=()=>{ game.state==="pause"?resumeGame():pauseGame(); };
+$("btn-post").onclick=()=>{ postLedger(); };
+$("btn-replay").onclick=startRun;
+$("btn-replay2").onclick=startRun;
+$("btn-leaderboard").onclick=()=>{ game.state="form"; hideAllScreens(); showScreen("form"); setFooter(false); $("f-first").focus(); };
+$("btn-skip").onclick=async()=>{ game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true); };
+
+$("btn-share").onclick=async()=>{
+  const score=Math.round(game.value); const text=CONTENT.shareText(score);
+  const url=location.href.split("#")[0];
+  try{
+    if(navigator.share){ await navigator.share({title:"Follow the Money — Audit the Ledger",text,url}); }
+    else { await navigator.clipboard.writeText(text+" "+url); toast("Link copied"); }
+  }catch{}
+};
+
+$("lead-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const first=$("f-first").value.trim(), last=$("f-last").value.trim(),
+        email=$("f-email").value.trim(), postcode=$("f-postcode").value.trim(),
+        consent=$("f-consent").checked, hp=$("f-website").value;
+  let ok=true;
+  const setErr=(id,inp,msg)=>{ $(id).textContent=msg||""; if(inp) $(inp).setAttribute("aria-invalid", msg?"true":"false"); if(msg)ok=false; };
+  setErr("e-first","f-first", first?"":"Enter your first name");
+  setErr("e-last","f-last", last?"":"Enter your last name");
+  setErr("e-email","f-email", /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?"":"Enter a valid email");
+  setErr("e-postcode","f-postcode", /^\d{4}$/.test(postcode)?"":"Enter a 4-digit postcode");
+  setErr("e-consent",null, consent?"":"Please tick to continue");
+  if(hp) return;                    // honeypot tripped — silently drop
+  if(!ok) return;
+  const res=await Leaderboard.submit({first,last,email,postcode,score:Math.round(game.value)});
+  game.lastPlayerId=res.id;
+  game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true);
+  say(`You ranked number ${res.rank} of ${res.total}.`);
+});
+
+function toast(msg){
+  const t=document.createElement("div"); t.textContent=msg;
+  t.style.cssText="position:absolute;left:50%;bottom:80px;transform:translateX(-50%);z-index:20;"+
+    "background:rgba(8,20,32,.95);border:1px solid var(--card-brd);color:var(--paper);"+
+    "padding:10px 16px;border-radius:10px;font:600 13px var(--font)";
+  $("field").appendChild(t); setTimeout(()=>t.remove(),1600);
+}
+
+/* ---- Toggles -------------------------------------------------------------- */
+const ICONS={
+  soundOn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"/></svg>',
+  soundOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 5m0-5-5 5"/></svg>',
+  motion:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+  contrast:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+};
+function applyToggles(){
+  document.documentElement.setAttribute("data-motion", settings.motion);
+  document.documentElement.setAttribute("data-contrast", settings.contrast?"on":"off");
+  const s=$("t-sound"); s.innerHTML=settings.sound?ICONS.soundOn:ICONS.soundOff;
+  s.setAttribute("aria-pressed",settings.sound); s.title="Sound ("+(settings.sound?"on":"off")+")";
+  const m=$("t-motion"); m.innerHTML=ICONS.motion; m.setAttribute("aria-pressed", settings.motion==="off"); m.title=(motionOn()?"Reduce motion":"Motion reduced");
+  const c=$("t-contrast"); c.innerHTML=ICONS.contrast; c.setAttribute("aria-pressed",settings.contrast); c.title="High contrast ("+(settings.contrast?"on":"off")+")";
+  $("t-pause").innerHTML=ICONS.pause;
+}
+$("t-sound").onclick=()=>{ settings.sound=!settings.sound; store.set("ftm_sound",settings.sound); if(settings.sound){Sound.init();Sound.catch();} applyToggles(); };
+$("t-motion").onclick=()=>{ settings.motion=motionOn()?"off":"on"; store.set("ftm_motion",settings.motion); applyToggles(); };
+$("t-contrast").onclick=()=>{ settings.contrast=!settings.contrast; store.set("ftm_contrast",settings.contrast); applyToggles(); };
+applyToggles();
+
+/* ============================================================================
+   17b) TEST HOOK — inert in production; only active with ?debug or #debug.
+   ========================================================================== */
+if(new URLSearchParams(location.search).has("debug") || location.hash==="#debug"){
+  window.__ftm = {
+    game, LEVELS, BONUS, CONTENT, get page(){ return game.page; },
+    step(dt=1/60){ update(dt); render(); },
+    steps(n,dt=1/60){ for(let i=0;i<n;i++){ update(dt); render(); } },
+    play(){ startRun(); },
+    flag(i){ toggleFlag(i,true); },
+    post(){ postLedger(); },
+    flagAllSkims(){ if(game.page) for(const c of game.page.cells) c.flagged=c.skim; syncPostBtn(); },
+    // auto-play a perfect run for smoke-testing (drives page & level transitions too)
+    autopilot(maxSteps=30000){ startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        if(game.state==="playing"){
+          const p=game.page;
+          if(p && p.phase==="scanning"){ for(const c of p.cells) c.flagged=c.skim; postLedger(); }
+          update(1/60); n++;
+        } else break;
+      }
+      return { state:game.state, score:Math.round(game.value), caught:game.caught, missed:game.missed, falseFlags:game.falseFlags, best:game.bestStreak, cleanPages:game.cleanPages, steps:n }; },
+    // a deliberately sloppy run (flags nothing) to sanity-check the loss path
+    autofail(maxSteps=30000){ startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        if(game.state==="playing"){ const p=game.page; if(p&&p.phase==="scanning") postLedger(); update(1/60); n++; }
+        else break;
+      }
+      return { state:game.state, score:Math.round(game.value), caught:game.caught, missed:game.missed, steps:n }; },
+  };
+}
+
+/* ============================================================================
+   18) BOOT / LOADING
+   ========================================================================== */
+(function boot(){
+  const bar=$("load-bar"); let p=0;
+  const iv=setInterval(()=>{ p=Math.min(100,p+rand(14,30)); bar.style.width=p+"%";
+    if(p>=100){ clearInterval(iv); setTimeout(goTitle, 260); }
+  }, 130);
+})();
+</script>
+</body>
+</html>

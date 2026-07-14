@@ -1,0 +1,1443 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="description" content="Revolving Door — Musical Chairs. The posts keep spinning past. Tap to stop the wheel on the Cooling-Off seat — not another revolving-door job. How much public trust can you hold?" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#0E1C20" />
+<title>Revolving Door — Musical Chairs</title>
+<style>
+/* ============================================================================
+   REVOLVING DOOR — MUSICAL CHAIRS  (self-contained static build)
+   No build step, no dependencies, no external network calls.
+   Mechanic: TAP to stop a spinning carousel on the right seat — a timing /
+             stop-the-wheel verb (NOT drag, NOT steer, NOT routing).
+   Sibling of "Sort the Suits": shares the RevolvingDoor lobby palette
+   (teal-slate + brass) but the centrepiece is a rotating brass carousel.
+   Single committed dark theme. Colour is always backed by icon + label.
+   ========================================================================== */
+:root{
+  --ink:#0E1C20;            /* field — dark teal-slate lobby */
+  --ink-2:#12262B;          /* raised surface */
+  --paper:#EAF3F4;          /* text on dark */
+  --paper-dim:#93AAB0;      /* muted text */
+  --brass:#D9B25A;          /* the carousel / primary accent */
+  --brass-lite:#F1D68C;
+  --brass-deep:#A8842F;
+  --hold:#5AD1A0;           /* the Cooling-Off / accountability seat (target) */
+  --hold-deep:#1C7A54;
+  --post:#EFA23C;           /* a revolving-door post (to avoid) */
+  --post-deep:#B9701A;
+  --red:#E4573D;            /* miss / alert */
+  --red-deep:#8F2C1C;
+  --blue:#4FA8E8;
+  --line:rgba(147,170,176,.16);
+  --card:rgba(18,38,43,.86);
+  --card-brd:rgba(147,170,176,.22);
+  --focus:#7FD3FF;
+  --radius:16px;
+  --shadow:0 18px 50px rgba(0,0,0,.45);
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","SFMono-Regular","Segoe UI Mono",Menlo,Consolas,monospace;
+}
+/* high-contrast toggle overrides */
+html[data-contrast="on"]{
+  --ink:#04100F; --paper:#FFFFFF; --paper-dim:#CBDBDD;
+  --hold:#7BF0C0; --post:#FFC066;
+  --line:rgba(205,225,225,.30); --card:rgba(4,16,15,.94); --card-brd:rgba(205,225,225,.45);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+html{background:#050d0c}
+body{
+  font-family:var(--font); color:var(--paper);
+  background:radial-gradient(120% 80% at 50% -10%, #16302f 0%, #0a1a1a 45%, #050e0d 100%);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow:hidden; overscroll-behavior:none;
+}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- Stage: centered vertical play strip, framed on wide screens ---------- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#field{
+  position:relative; width:min(100vw,560px); height:100dvh; height:100vh;
+  overflow:hidden; box-shadow:0 0 0 1px var(--line), 0 30px 90px rgba(0,0,0,.55);
+  background:var(--ink);
+}
+@media (min-width:600px){ #field{border-radius:22px; height:min(100dvh,940px); height:min(100vh,940px)} }
+canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* ---- HUD ------------------------------------------------------------------ */
+#hud{position:absolute;left:0;right:0;top:0;padding:14px 16px calc(14px);
+  display:none; flex-direction:column; gap:10px; pointer-events:none; z-index:6}
+#hud.show{display:flex}
+.hud-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.level-pill{font:600 12px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--paper-dim);background:rgba(8,20,20,.6);border:1px solid var(--line);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px)}
+.streak-pill{font:700 12px/1 var(--mono);letter-spacing:.04em;color:var(--hold);
+  background:rgba(90,209,160,.1);border:1px solid rgba(90,209,160,.4);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px);
+  opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease}
+.streak-pill.show{opacity:1;transform:none}
+.meter-wrap{flex:1}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.meter-label{font:600 11px/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--paper-dim)}
+.meter-val{font:700 15px/1 var(--mono);color:var(--brass-lite)}
+.meter-val small{color:var(--paper-dim);font-weight:600}
+.meter-bar{height:9px;border-radius:999px;background:rgba(8,20,20,.7);border:1px solid var(--line);overflow:hidden}
+.meter-fill{height:100%;width:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--brass-deep),var(--brass));
+  box-shadow:0 0 14px rgba(217,178,90,.5);transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.meter-fill.flash{background:linear-gradient(90deg,var(--red-deep),var(--red))}
+.progress-line{height:3px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.progress-inner{height:100%;width:0;background:var(--paper-dim);opacity:.6;transition:width .2s linear}
+
+/* ---- Top-right toggles ---------------------------------------------------- */
+#toggles{position:absolute;top:12px;right:12px;display:flex;gap:8px;z-index:8}
+.toggle{width:38px;height:38px;border-radius:11px;border:1px solid var(--card-brd);
+  background:rgba(8,20,20,.66);color:var(--paper-dim);cursor:pointer;display:grid;place-items:center;
+  backdrop-filter:blur(8px);transition:transform .12s ease,color .12s ease,border-color .12s}
+.toggle:hover{transform:translateY(-1px);color:var(--paper)}
+.toggle[aria-pressed="true"]{color:var(--brass);border-color:rgba(217,178,90,.5)}
+.toggle svg{width:18px;height:18px;display:block}
+.toggle:focus-visible,button:focus-visible,a.btn:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ---- Screens (DOM overlay for accessibility) ------------------------------ */
+.screen{position:absolute;inset:0;z-index:7;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:26px 22px;gap:18px;
+  overflow-y:auto;
+  background:radial-gradient(120% 70% at 50% 0%, rgba(14,28,32,.55), rgba(5,14,13,.86) 70%);
+  backdrop-filter:blur(3px)}
+.screen.show{display:flex;animation:fadeIn .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--card-brd);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:24px 22px;display:flex;flex-direction:column;gap:16px}
+.eyebrow{font:700 12px/1 var(--font);letter-spacing:.16em;text-transform:uppercase;color:var(--brass)}
+h1.title{font:800 clamp(30px,8vw,44px)/1.02 var(--font);letter-spacing:-.02em;margin:0}
+h1.title .accent{color:var(--brass)}
+.subtitle{font:700 13px/1 var(--font);letter-spacing:.22em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:9px}
+.subtitle::before,.subtitle::after{content:"";height:1px;flex:1;background:var(--line)}
+h2{font:800 clamp(22px,6vw,30px)/1.05 var(--font);letter-spacing:-.01em;margin:0}
+p{margin:0;color:var(--paper-dim);font-size:15px;line-height:1.55}
+p.lead{color:var(--paper);font-size:16px}
+.attributed{font-size:13px;line-height:1.5;color:var(--paper-dim);
+  border-left:3px solid var(--brass);padding:10px 0 10px 13px;background:rgba(217,178,90,.05);border-radius:0 8px 8px 0}
+.attributed .src{display:block;margin-top:6px;color:#7c9298;font-size:12px}
+.pending{color:var(--brass);font-weight:700;font-variant:small-caps;letter-spacing:.02em}
+
+/* buttons */
+.btn{appearance:none;border:0;cursor:pointer;font:700 16px/1 var(--font);letter-spacing:.01em;
+  padding:15px 20px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  text-decoration:none;transition:transform .12s cubic-bezier(.2,.8,.2,1),box-shadow .12s,filter .12s;width:100%}
+.btn:active{transform:translateY(1px) scale(.995)}
+.btn-primary{background:linear-gradient(180deg,var(--brass-lite),var(--brass));color:#2a2208;
+  box-shadow:0 10px 26px rgba(217,178,90,.34),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(217,178,90,.42),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--paper);border:1px solid var(--card-brd)}
+.btn-ghost:hover{background:rgba(255,255,255,.09);transform:translateY(-1px)}
+.btn-green{background:linear-gradient(180deg,#6ff0bd,var(--hold));color:#04231a;box-shadow:0 10px 26px rgba(90,209,160,.3)}
+.btn-row{display:flex;gap:10px}
+.btn-row .btn{width:auto;flex:1}
+.btnset{display:flex;flex-direction:column;gap:10px}
+
+.controls-hint{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;color:var(--paper-dim);font-size:13px;align-items:center}
+.key{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:7px;
+  border:1px solid var(--card-brd);background:rgba(255,255,255,.05);font:700 13px/1 var(--mono);color:var(--paper)}
+
+/* how-to legend */
+.legend{display:flex;flex-direction:column;gap:12px}
+.legend-item{display:flex;align-items:center;gap:13px}
+.chip{width:46px;height:46px;border-radius:12px;flex:0 0 auto;display:grid;place-items:center}
+.chip svg{width:26px;height:26px;display:block}
+.chip.hold{background:linear-gradient(180deg,#6ff0bd,var(--hold));color:#04231a}
+.chip.post{background:linear-gradient(180deg,#f4b45f,var(--post));color:#3a2404}
+.chip.tap{background:linear-gradient(180deg,#f0d98c,var(--brass));color:#2a2208}
+.legend-item div p{font-size:13px}
+.legend-item strong{color:var(--paper);font-size:14px}
+
+/* results */
+.result-score{text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.result-score .big{font:800 clamp(46px,15vw,72px)/1 var(--mono);color:var(--brass-lite);letter-spacing:-.02em}
+.result-score .of{font-size:14px;color:var(--paper-dim);letter-spacing:.02em}
+.result-verdict{font:700 17px/1.3 var(--font);text-align:center}
+.result-stats{display:flex;gap:10px;justify-content:center}
+.stat{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:11px;padding:11px 8px;text-align:center}
+.stat b{display:block;font:800 20px/1 var(--mono);color:var(--paper)}
+.stat span{font-size:11px;color:var(--paper-dim);letter-spacing:.04em;text-transform:uppercase}
+
+/* form */
+form{display:flex;flex-direction:column;gap:13px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font:600 13px/1 var(--font);color:var(--paper);letter-spacing:.01em}
+.field input{font:500 16px/1 var(--font);padding:13px 13px;border-radius:11px;color:var(--paper);
+  background:rgba(8,20,20,.7);border:1px solid var(--card-brd);width:100%}
+.field input::placeholder{color:#6a8288}
+.field.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field.two .field{gap:6px}
+.err{color:#ff9d8a;font-size:12px;min-height:0}
+.field input[aria-invalid="true"]{border-color:var(--red)}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--paper-dim);line-height:1.4}
+.consent input{margin-top:2px;width:18px;height:18px;flex:0 0 auto;accent-color:var(--brass)}
+.consent a{color:var(--brass)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* leaderboard */
+.lb{width:100%;display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto}
+.lb-row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;
+  padding:11px 12px;border-radius:11px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.lb-row .rank{font:800 14px/1 var(--mono);color:var(--paper-dim);text-align:center}
+.lb-row .who{font-weight:600;font-size:14px}
+.lb-row .who small{display:block;color:var(--paper-dim);font-weight:500;font-size:12px}
+.lb-row .sc{font:800 16px/1 var(--mono);color:var(--brass-lite)}
+.lb-row.me{background:rgba(217,178,90,.1);border-color:rgba(217,178,90,.45)}
+.lb-empty{color:var(--paper-dim);font-size:14px;text-align:center;padding:18px}
+
+/* footer / legal chrome */
+#footer{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  display:none;background:linear-gradient(0deg,rgba(4,12,11,.94),rgba(4,12,11,0));
+  font-size:10.5px;line-height:1.4;color:#6c8288;text-align:center}
+#footer.show{display:block}
+#footer .auth{color:#8ba1a7;font-weight:600}
+#footer a{color:#8ba1a7}
+.legal-block{font-size:11.5px;color:var(--paper-dim);line-height:1.5;background:rgba(0,0,0,.2);
+  border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.legal-block strong{color:var(--paper)}
+
+/* misc */
+.mini{font-size:12px;color:var(--paper-dim);text-align:center}
+
+/* loading */
+#screen-loading{background:var(--ink)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:20px}
+.loader-door{width:72px;height:72px;position:relative;animation:spin 2.6s linear infinite}
+.loader-door::before{content:"";position:absolute;inset:0;border-radius:50%;
+  border:3px solid rgba(217,178,90,.28)}
+.loader-door span{position:absolute;left:50%;top:50%;width:3px;height:34px;margin:-34px 0 0 -1.5px;
+  transform-origin:bottom center;background:linear-gradient(180deg,var(--brass),var(--brass-deep));border-radius:3px}
+.loader-door span:nth-child(2){transform:rotate(72deg)}
+.loader-door span:nth-child(3){transform:rotate(144deg)}
+.loader-door span:nth-child(4){transform:rotate(216deg)}
+.loader-door span:nth-child(5){transform:rotate(288deg)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-bar{width:180px;height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.loader-bar i{display:block;height:100%;width:0;background:var(--brass);border-radius:999px;transition:width .2s linear}
+.loader-txt{font:600 12px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-dim)}
+
+@media (prefers-reduced-motion:reduce){
+  .screen.show{animation:none}
+  .loader-door{animation:none}
+}
+html[data-motion="off"] .loader-door{animation:none}
+html[data-motion="off"] .screen.show{animation:none}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="field">
+    <canvas id="game" aria-hidden="true"></canvas>
+
+    <!-- Live region for screen-reader game state -->
+    <div id="live" class="sr-only" aria-live="polite" role="status"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-row">
+        <span class="level-pill" id="hud-level">The Door Turns</span>
+        <span class="streak-pill" id="hud-streak">HELD ×0</span>
+      </div>
+      <div class="hud-row">
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="meter-label">Public trust held</span>
+            <span class="meter-val" id="hud-trust">100<small>/100</small></span>
+          </div>
+          <div class="meter-bar"><div class="meter-fill" id="hud-fill"></div></div>
+        </div>
+      </div>
+      <div class="progress-line"><div class="progress-inner" id="hud-progress"></div></div>
+    </div>
+
+    <!-- Toggles -->
+    <div id="toggles">
+      <button class="toggle" id="t-sound" aria-pressed="false" title="Sound (off)" aria-label="Toggle sound"></button>
+      <button class="toggle" id="t-motion" aria-pressed="false" title="Reduce motion" aria-label="Toggle reduced motion"></button>
+      <button class="toggle" id="t-contrast" aria-pressed="false" title="High contrast" aria-label="Toggle high contrast"></button>
+      <button class="toggle" id="t-pause" title="Pause" aria-label="Pause game" style="display:none"></button>
+    </div>
+
+    <!-- LOADING -->
+    <section id="screen-loading" class="screen show" aria-label="Loading">
+      <div class="loader">
+        <div class="loader-door" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="loader-bar"><i id="load-bar"></i></div>
+        <div class="loader-txt">Starting the music…</div>
+      </div>
+    </section>
+
+    <!-- TITLE -->
+    <section id="screen-title" class="screen" aria-label="Start screen">
+      <div class="card">
+        <span class="eyebrow">An accountability mini-game</span>
+        <h1 class="title">The Revolving <span class="accent">Door</span></h1>
+        <div class="subtitle">Musical Chairs</div>
+        <p class="lead" id="framing-fact"></p>
+        <p id="framing-plan" style="font-size:13px"></p>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-play">Play — stop the wheel</button>
+          <button class="btn btn-ghost" id="btn-how">How to play</button>
+        </div>
+        <div class="controls-hint">
+          <span>Tap to stop the carousel</span>
+          <span><span class="key">Space</span> also stops it</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section id="screen-howto" class="screen" aria-label="How to play">
+      <div class="card">
+        <span class="eyebrow">How to play</span>
+        <h2>Stop the music on the right seat.</h2>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="chip tap" id="lg-tap"></div>
+            <div><strong>The posts spin past the gate</strong><p>Tap anywhere — the carousel eases to a stop under the pointer.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip hold" id="lg-hold"></div>
+            <div><strong>Land the green Cooling-Off seat</strong><p>Stop dead-centre on it and you hold the door. Nailed it = a bigger hold.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip post" id="lg-post"></div>
+            <div><strong>Miss, and they grab a revolving-door post</strong><p>Land on an amber post — or dither too long — and public trust drops.</p></div>
+          </div>
+        </div>
+        <p class="mini">The wheel spins <strong style="color:var(--paper)">faster each level</strong>. Find the rhythm.</p>
+        <button class="btn btn-primary" id="btn-how-start">Start the wheel</button>
+      </div>
+    </section>
+
+    <!-- TRANSITION -->
+    <section id="screen-transition" class="screen" aria-label="Next level">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow" id="tr-eyebrow">Level 2</span>
+        <h2 id="tr-name">Full Revolution</h2>
+        <p id="tr-desc"></p>
+        <div class="result-score" style="margin:2px 0">
+          <span class="of">Public trust still held</span>
+          <span class="big" id="tr-carry" style="font-size:clamp(30px,10vw,44px)">100</span>
+        </div>
+        <button class="btn btn-primary" id="btn-transition">Keep it spinning</button>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="screen-pause" class="screen" aria-label="Paused">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow">Paused</span>
+        <h2>Stop the music</h2>
+        <div class="btnset" style="max-width:280px">
+          <button class="btn btn-primary" id="btn-resume">Resume</button>
+          <button class="btn btn-ghost" id="btn-restart">Restart shift</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="screen-results" class="screen" aria-label="Results">
+      <div class="card">
+        <span class="eyebrow" id="res-eyebrow">Music’s over</span>
+        <div class="result-score">
+          <span class="big" id="res-score">0</span>
+          <span class="of">of 100 public trust held</span>
+        </div>
+        <p class="result-verdict" id="res-verdict"></p>
+        <div class="result-stats">
+          <div class="stat"><b id="res-held">0</b><span>Doors held</span></div>
+          <div class="stat"><b id="res-best">0</b><span>Best streak</span></div>
+          <div class="stat"><b id="res-miss">0</b><span>Slipped through</span></div>
+        </div>
+        <div class="attributed" id="res-citation"></div>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-leaderboard">Add my score to the board</button>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="btn-share">Share</button>
+            <button class="btn btn-ghost" id="btn-replay">Play again</button>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy" href="#" target="_blank" rel="noopener">Our integrity plan</a>
+          </div>
+        </div>
+        <div class="legal-block" id="res-disclaimer"></div>
+      </div>
+    </section>
+
+    <!-- FORM -->
+    <section id="screen-form" class="screen" aria-label="Join the leaderboard">
+      <div class="card">
+        <span class="eyebrow">Add your score</span>
+        <h2>Join the board</h2>
+        <p style="font-size:13px">Your score will show as first name + postcode. <span id="form-privacy"></span></p>
+        <form id="lead-form" novalidate autocomplete="on">
+          <div class="field two">
+            <div class="field">
+              <label for="f-first">First name</label>
+              <input id="f-first" name="fname" autocomplete="given-name" maxlength="40" inputmode="text" />
+              <span class="err" id="e-first"></span>
+            </div>
+            <div class="field">
+              <label for="f-last">Last name</label>
+              <input id="f-last" name="lname" autocomplete="family-name" maxlength="40" />
+              <span class="err" id="e-last"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-email">Email</label>
+            <input id="f-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="120" />
+            <span class="err" id="e-email"></span>
+          </div>
+          <div class="field">
+            <label for="f-postcode">Postcode</label>
+            <input id="f-postcode" name="postcode" inputmode="numeric" maxlength="4" pattern="\d{4}" />
+            <span class="err" id="e-postcode"></span>
+          </div>
+          <!-- honeypot -->
+          <div class="hp" aria-hidden="true"><label>Website<input id="f-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <label class="consent">
+            <input type="checkbox" id="f-consent" />
+            <span id="consent-label"></span>
+          </label>
+          <span class="err" id="e-consent"></span>
+          <button class="btn btn-primary" type="submit" id="btn-submit">Submit &amp; see the board</button>
+          <button class="btn btn-ghost" type="button" id="btn-skip">Skip — just show the board</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="screen-leaderboard" class="screen" aria-label="Leaderboard">
+      <div class="card">
+        <span class="eyebrow">Leaderboard</span>
+        <h2>Who held the most doors</h2>
+        <div class="lb" id="lb-list"></div>
+        <p class="mini" id="lb-note"></p>
+        <div class="btnset">
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate2" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy2" href="#" target="_blank" rel="noopener">Our integrity plan</a>
+          </div>
+          <button class="btn btn-ghost" id="btn-replay2">Play again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER: legal chrome -->
+    <footer id="footer">
+      <div class="auth" id="foot-auth"></div>
+      <div id="foot-disclaimer"></div>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+/* ============================================================================
+   1) CONTENT  —  SINGLE SOURCE OF TRUTH FOR EVERY FACTUAL CLAIM
+   --------------------------------------------------------------------------
+   >>> LEGAL / COMMS REVIEW HAPPENS HERE. <<<
+   Everything with any factual weight is in this one object. Figures ship as
+   clearly-marked placeholders until legal supplies signed-off wording.
+
+   Guardrails (same strict set as the sibling "Sort the Suits", because the
+   subject still concerns people moving into roles):
+     - The figure at the gate is a FACELESS silhouette. No portrait, name, or
+       caricature of any real, identifiable person — ever.
+     - Seats are GENERIC ROLE ARCHETYPES / GENERIC ACCOUNTABILITY OUTCOMES from
+       the lists below. They never name a real post, appointment, or person.
+     - NO real company, union, or organisation is named or depicted. (In
+       particular: no "union" seats — everything stays generic.)
+     - "Revolving-door post" / "cooling-off" are abstract patterns, not an
+       accusation against any individual.
+     - Every displayed figure/number shows its source in the same view.
+     - No depiction of violence, corruption-as-crime, or exploitation.
+   ========================================================================== */
+const CONTENT = {
+  // Framing (title screen). The "fact" line is attributed, not asserted.
+  framingFact:
+    "A parliamentary inquiry has heard concerns about the “revolving door” — " +
+    "how quickly some officials move into the industries they once oversaw, " +
+    "often with little or no cooling-off period.",
+  framingPlan:
+    "[POLICY HOOK PENDING] — the Liberal Party’s plan for real cooling-off " +
+    "periods and a public conflict-of-interest register.",
+
+  // Generic revolving-door POSTS (the amber seats to avoid). NO real entities, NO unions.
+  posts: ["Lobby Firm","Industry Board","Consultancy Retainer","Peak-Body Post",
+          "Government Relations","Advisory Board","Corporate Directorship","Ministerial Office"],
+  // Generic ACCOUNTABILITY outcomes (the green target seat).
+  holds: ["Cooling-Off Period","Public Register","Recusal","Open Tender",
+          "Independent Review","Mandatory Gap"],
+
+  // Levels
+  levels: {
+    l1: { name:"The Door Turns",  desc:"A slow spin. Tap to stop the wheel on the green Cooling-Off seat." },
+    l2: { name:"Full Revolution", desc:"Faster now, more posts, fewer green seats, and less time to dither." },
+    bonus: { name:"How It’s Supposed to Work", desc:"Cooling-off is the norm here. An easy, honest spin." },
+  },
+
+  // Headline attributed statistic on the results screen.
+  // NOTHING here is asserted as the party's own finding.
+  citation: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",   // e.g. "most departing ministers"
+    framing: "took private-sector or lobbying roles within [PERIOD PENDING] of " +
+             "leaving office — with cooling-off rules that critics say are too weak to bite.",
+    source:  "[SOURCE PENDING]",                   // e.g. "named register / outlet / inquiry"
+    date:    "[DATE OF CITED SOURCE PENDING]",
+    signoff: "PENDING",                            // -> reviewer name + date at the gate
+  },
+
+  // Conflicts-of-interest disclaimer (distinct from the money games' disclaimers).
+  disclaimer:
+    "This game is an abstract timing puzzle using a faceless figure and generic " +
+    "job titles. It does not depict, name, or refer to any real person, company, " +
+    "union, or organisation. The concerns referred to are attributed to their " +
+    "sources and are matters of public debate.",
+
+  // Electoral authorisation line — legally required for electoral matter.
+  authorisation: "Authorised by [NAME PENDING], [PARTY & ADDRESS PENDING].",
+
+  // Lead-capture collection statement (privacy).
+  privacy:
+    "We collect your details to contact you about this campaign. You can opt out " +
+    "any time. See our [collection statement — LINK PENDING].",
+  consentLabel:
+    "I agree to be contacted and to the collection statement above. [WORDING PENDING LEGAL SIGN-OFF]",
+
+  // CTAs — placeholder hrefs, clearly not live.
+  donateUrl: "#donate-url-pending",
+  policyUrl: "#integrity-policy-url-pending",
+
+  // Share text (neutral).
+  shareText: (score) =>
+    `I held ${score}/100 public trust in "The Revolving Door — Musical Chairs". Can you stop the wheel better?`,
+};
+
+/* ============================================================================
+   2) THEME + SMALL HELPERS
+   ========================================================================== */
+const COL = {
+  ink:"#0E1C20", paper:"#EAF3F4", dim:"#93AAB0",
+  brass:"#D9B25A", brassLite:"#F1D68C", brassDeep:"#A8842F",
+  hold:"#5AD1A0", holdDeep:"#1C7A54", post:"#EFA23C", postDeep:"#B9701A",
+  red:"#E4573D", redDeep:"#8F2C1C", blue:"#4FA8E8",
+  silhouette:"#22363D", silhouetteLite:"#2E4A52",
+};
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const choice=a=>a[Math.floor(Math.random()*a.length)];
+const easeOutCubic=t=>1-Math.pow(1-t,3);
+const TAU=Math.PI*2;
+const $=id=>document.getElementById(id);
+
+/* ============================================================================
+   3) PERSISTENT SETTINGS (sound / motion / contrast) — shared across RD games
+   ========================================================================== */
+const store = {
+  get(k,d){ try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d} },
+  set(k,v){ try{localStorage.setItem(k,JSON.stringify(v))}catch{} },
+};
+const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const settings = {
+  sound:    store.get("rd_sound", false),
+  motion:   store.get("rd_motion", prefersReducedMotion ? "off" : "on"),
+  contrast: store.get("rd_contrast", false),
+};
+const motionOn = () => settings.motion === "on";
+
+/* ============================================================================
+   4) AUDIO — WebAudio, muted by default, lazy-init on first gesture.
+   Every cue has a redundant visual, so sound-off loses no information.
+   The spinning wheel also emits a soft rhythmic "tick" as posts pass the gate.
+   ========================================================================== */
+const Sound = (()=>{
+  let ctx=null, master=null, ready=false;
+  function init(){
+    if(ready) return;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=.5; master.connect(ctx.destination); ready=true;
+    }catch{}
+  }
+  function tone(freq,dur,type="sine",vol=.3,slideTo=null){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime;
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1,slideTo),t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.008);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.02);
+  }
+  return {
+    init,
+    tick(){ tone(1200,.018,"square",.02) },                                       // a post passes the gate
+    stop(){ tone(300,.16,"sine",.10,180) },                                        // wheel eases to a halt
+    perfect(){ [660,880,1320].forEach((f,i)=>setTimeout(()=>tone(f,.16,"sine",.14),i*55)) },
+    good(){ tone(620,.1,"sine",.12,780) },
+    miss(){ tone(180,.26,"sawtooth",.16,80) },
+    level(){ tone(392,.12,"sine",.14,588); setTimeout(()=>tone(588,.18,"sine",.12),90) },
+    win(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.35,"sine",.14),i*90)) },
+    lose(){ tone(200,.5,"sine",.14,90) },
+  };
+})();
+
+/* ============================================================================
+   5) CANVAS + RESPONSIVE SCALER
+   ========================================================================== */
+const canvas=$("game"), ctx=canvas.getContext("2d");
+let W=0,H=0,DPR=1;
+function resize(){
+  W=Math.max(1,canvas.clientWidth); H=Math.max(1,canvas.clientHeight);
+  DPR=Math.min(window.devicePixelRatio||1, 2.5);
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+/* wheel geometry (resolved live so it adapts to any size) */
+const wheelCX = ()=>W/2;
+const wheelCY = ()=>H*0.545;
+const wheelR  = ()=>Math.min(W*0.40, H*0.27);
+const gateAngle = -Math.PI/2;            // 12 o'clock — where a seat is "selected"
+
+/* ============================================================================
+   6) PARTICLES + FLOATING TEXT (pooled)
+   ========================================================================== */
+const particles=[]; const POOL_MAX=440;
+function spawnParticles(x,y,color,count,opts={}){
+  if(!motionOn()) count=Math.min(count,4);
+  for(let i=0;i<count;i++){
+    if(particles.length>=POOL_MAX) break;
+    const a=opts.angle!=null?opts.angle+rand(-.6,.6):rand(0,TAU);
+    const sp=rand(opts.spMin??40,opts.spMax??220);
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp - (opts.lift||0),
+      life:rand(.4,.9),max:.9,size:rand(1.6,4.2),color,g:opts.g??140});
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.life-=dt; if(p.life<=0){particles.splice(i,1);continue}
+    p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.98;
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha=clamp(p.life/p.max,0,1); ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,TAU); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+const floaters=[];
+function spawnFloater(x,y,text,color,big){ floaters.push({x,y,text,color,life:1.2,max:1.2,big:!!big}); }
+function updateFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=30*dt; if(f.life<=0) floaters.splice(i,1); }
+}
+function drawFloaters(){
+  ctx.textAlign="center";
+  for(const f of floaters){
+    ctx.globalAlpha=clamp(f.life/f.max,0,1);
+    ctx.font=(f.big?"800 22px ":"800 15px ")+getMono();
+    ctx.fillStyle="rgba(0,0,0,.5)"; ctx.fillText(f.text,f.x+1,f.y+1);
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+function getMono(){ return 'ui-monospace,"Cascadia Code",Menlo,Consolas,monospace'; }
+function getSans(){ return 'ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'; }
+
+/* ============================================================================
+   7) LEVEL DATA (difficulty is data-driven & provable from these numbers)
+   --------------------------------------------------------------------------
+   rounds   : figures to seat this level
+   seats    : number of seats on the carousel
+   green    : how many are Cooling-Off (target) seats
+   omega    : spin speed rad/sec (CONSTANT within a level, so timing is
+              learnable; it steps up between levels)
+   decel    : seconds the wheel takes to ease to a stop after a tap
+   patience : seconds before an un-tapped figure lets themselves into a post
+   perfect  : centred-ness needed for a PERFECT hold (0..1 of the half-seat;
+              smaller = stricter)
+   ========================================================================== */
+const LEVELS = [
+  { key:"l1", ...CONTENT.levels.l1, rounds:12, seats:6, green:2, omega:1.7, decel:0.55, patience:3.6, perfect:0.55 },
+  { key:"l2", ...CONTENT.levels.l2, rounds:16, seats:8, green:1, omega:3.3, decel:0.48, patience:2.3, perfect:0.40 },
+];
+const BONUS = { key:"bonus", ...CONTENT.levels.bonus, rounds:8, seats:6, green:4, omega:1.5, decel:0.6, patience:4.5, perfect:0.6 };
+
+/* Scoring (see resolveRound). Perfect play holds at 100. */
+const SCORE = { miss:8, good:2, reformEvery:5, reformAmt:2 };
+
+/* ============================================================================
+   8) GAME STATE
+   ========================================================================== */
+const wheel = {
+  seats:[],            // [{kind:'hold'|'post', label}]
+  angle:0,             // current rotation (radians)
+  omega:0,             // current angular velocity
+  targetOmega:0,       // level spin speed
+  decelRate:0,         // rad/s^2 while stopping
+};
+const game = {
+  state:"loading",     // loading|title|howto|playing|bonus|transition|pause|results|form|leaderboard
+  levelIdx:0,
+  trust:100,           // surviving public trust (= score); continuous across levels
+  streak:0, bestStreak:0, held:0, missed:0,
+  roundIdx:0, roundsThisLevel:0,
+  phase:"spin",        // spin|stopping|resolved|spinup   (within a level)
+  patience:0, patienceMax:1,
+  resolveT:0, spinupT:0,
+  figure:{ role:"", present:false, seatHint:null, hop:0 },
+  outcome:null,        // {kind, seatIdx, label} for the current resolution
+  tickAcc:0,           // for the passing-post audio ticks
+  shake:0, hitstop:0, timeScale:1, flash:0, flashCol:COL.red, confetti:0, glow:0,
+  lastPlayerId:null, _pendingLevel:null, _resumeState:null,
+};
+function levelDef(){ return LEVELS[game.levelIdx] || LEVELS[0]; }
+function activeDef(){ return game.state==="bonus" ? BONUS : levelDef(); }
+
+/* ---- Screen (DOM) management --------------------------------------------- */
+const SCREENS=["loading","title","howto","transition","pause","results","form","leaderboard"];
+function showScreen(name){ for(const s of SCREENS){ $("screen-"+s).classList.toggle("show", s===name); } }
+function hideAllScreens(){ for(const s of SCREENS) $("screen-"+s).classList.remove("show"); }
+function setHUD(on){ $("hud").classList.toggle("show", on); $("t-pause").style.display=on?"grid":"none"; }
+function setFooter(on){ $("footer").classList.toggle("show", on); }
+function say(msg){ $("live").textContent=msg; }
+
+/* ============================================================================
+   9) WHEEL — build seats + the "which seat is at the gate" ground truth
+   ========================================================================== */
+function buildWheel(L){
+  const n=L.seats, g=clamp(L.green,1,n-1);
+  // spread the green (hold) seats as evenly as possible around the ring
+  const greenIdx=new Set();
+  const stepF=n/g;
+  for(let i=0;i<g;i++) greenIdx.add(Math.round(i*stepF)%n);
+  // top up if rounding collided
+  let gi=0; while(greenIdx.size<g && gi<n){ greenIdx.add(gi); gi++; }
+  const holds=shuffled(CONTENT.holds), posts=shuffled(CONTENT.posts);
+  let hc=0, pc=0;
+  wheel.seats=[];
+  for(let i=0;i<n;i++){
+    if(greenIdx.has(i)) wheel.seats.push({kind:"hold", label:holds[hc++%holds.length]});
+    else                wheel.seats.push({kind:"post", label:posts[pc++%posts.length]});
+  }
+  wheel.angle=rand(0,TAU);
+  wheel.targetOmega=L.omega; wheel.omega=L.omega;
+}
+function shuffled(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=randInt(0,i); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function seatAngularSize(){ return TAU/wheel.seats.length; }
+
+/* which seat sits under the gate right now, plus how centred (0=dead centre, 1=edge) */
+function seatAtGate(){
+  const n=wheel.seats.length, ss=TAU/n;
+  // seat i screen-angle = gateAngle + i*ss + wheel.angle ; at gate when (i*ss + wheel.angle) ≡ 0
+  const raw = (-wheel.angle)/ss;
+  const idx = ((Math.round(raw)%n)+n)%n;
+  const err = Math.abs(raw-Math.round(raw))*2;   // 0..1 across the half-seat
+  return { idx, err:clamp(err,0,1) };
+}
+
+/* ============================================================================
+   10) FLOW / STATE TRANSITIONS
+   ========================================================================== */
+function goTitle(){
+  game.state="title"; hideAllScreens(); showScreen("title"); setHUD(false); setFooter(true);
+  buildWheel(LEVELS[0]); game.figure.present=false;
+}
+function goHowTo(){ game.state="howto"; showScreen("howto"); setFooter(false); }
+
+function startRun(){
+  game.trust=100; game.levelIdx=0; game.lastPlayerId=null;
+  game.streak=0; game.bestStreak=0; game.held=0; game.missed=0;
+  beginLevel(0);
+}
+function beginLevel(idx){
+  resize();                                   // guarantee fresh geometry
+  game.levelIdx=idx; const L=LEVELS[idx];
+  particles.length=0; floaters.length=0;
+  buildWheel(L);
+  game.roundIdx=0; game.roundsThisLevel=L.rounds; game.timeScale=1;
+  game.state="playing"; hideAllScreens(); setHUD(true); setFooter(false);
+  $("hud-level").textContent=L.name;
+  updateStreakHUD(); updateHUD();
+  say(`${L.name}. Tap to stop the wheel on the green Cooling-Off seat.`);
+  Sound.level();
+  nextRound(true);
+}
+function endLevel(){
+  const next=game.levelIdx+1;
+  if(next<LEVELS.length){ showTransition(next); } else { beginBonus(); }
+}
+function showTransition(nextIdx){
+  game.state="transition"; setHUD(false); hideAllScreens(); showScreen("transition");
+  const L=LEVELS[nextIdx];
+  $("tr-eyebrow").textContent="Level "+(nextIdx+1);
+  $("tr-name").textContent=L.name; $("tr-desc").textContent=L.desc;
+  $("tr-carry").textContent=Math.round(game.trust);
+  game._pendingLevel=nextIdx;
+  say(`${L.name}. ${Math.round(game.trust)} of 100 public trust still held.`);
+}
+function beginBonus(){
+  resize();
+  game.state="bonus"; hideAllScreens(); setHUD(true); setFooter(false);
+  particles.length=0; floaters.length=0;
+  buildWheel(BONUS);
+  game.roundIdx=0; game.roundsThisLevel=BONUS.rounds; game.timeScale=1;
+  $("hud-level").textContent=BONUS.name; updateStreakHUD(); updateHUD();
+  say(`${BONUS.name}. Cooling-off is the norm — an easy spin.`);
+  Sound.level();
+  nextRound(true);
+}
+function finish(){
+  game.state="results"; setHUD(false); setFooter(true); hideAllScreens();
+  renderResults(); showScreen("results");
+  if(game.trust>=70){ Sound.win(); game.confetti=motionOn()?2.2:0; } else Sound.lose();
+}
+
+/* ---- round lifecycle ------------------------------------------------------ */
+function nextRound(first){
+  if(game.roundIdx>=game.roundsThisLevel){        // level complete
+    return game.state==="bonus" ? finish() : endLevel();
+  }
+  const L=activeDef();
+  game.figure.role = approachingRole();
+  game.figure.present=true; game.figure.hop=0;
+  game.outcome=null;
+  game.patienceMax=L.patience; game.patience=L.patience;
+  wheel.targetOmega=L.omega;
+  if(first){ wheel.omega=L.omega; game.phase="spin"; }
+  else { game.phase="spinup"; game.spinupT=0; }   // brief re-accel between rounds
+}
+function approachingRole(){
+  // a generic person seeking a post — described only by a neutral archetype
+  return choice(["A departing official","A former adviser","An outgoing appointee",
+                 "A retiring regulator","A former staffer","An ex-board member"]);
+}
+
+/* ============================================================================
+   11) INPUT — a single tap stops the wheel. Fully playable one-button.
+   ========================================================================== */
+function tapStop(){
+  if(game.state!=="playing" && game.state!=="bonus") return;
+  if(game.phase!=="spin") return;                 // only while it's freely spinning
+  const L=activeDef();
+  game.phase="stopping";
+  // constant deceleration to zero over L.decel seconds (learnable coast distance)
+  wheel.decelRate = wheel.omega / Math.max(0.08, L.decel);
+  Sound.stop();
+}
+function onDown(e){ Sound.init(); tapStop(); e.preventDefault(); }
+canvas.addEventListener("pointerdown",onDown);
+canvas.addEventListener("touchstart",e=>{e.preventDefault();},{passive:false});
+
+window.addEventListener("keydown",e=>{
+  Sound.init();
+  const k=e.key;
+  if(k===" "||k==="Enter"||k==="ArrowDown"){ e.preventDefault(); }
+  if(k==="Escape"){ if(game.state==="playing"||game.state==="bonus") pauseGame(); else if(game.state==="pause") resumeGame(); return; }
+  if(k==="Enter" && game.state==="title"){ startRun(); return; }
+  if(k==="Enter" && game.state==="transition"){ $("btn-transition").click(); return; }
+  if((k===" "||k==="Enter"||k==="ArrowDown") && (game.state==="playing"||game.state==="bonus")){ tapStop(); }
+});
+
+function pauseGame(){ if(game.state!=="playing"&&game.state!=="bonus")return; game._resumeState=game.state; game.state="pause"; setHUD(false); showScreen("pause"); }
+function resumeGame(){ if(game.state!=="pause")return; game.state=game._resumeState||"playing"; hideAllScreens(); setHUD(true); }
+
+/* ============================================================================
+   12) UPDATE
+   ========================================================================== */
+function update(dt){
+  const active = game.state==="playing"||game.state==="bonus";
+  updateParticles(dt); updateFloaters(dt);
+  if(game.shake>0) game.shake=Math.max(0,game.shake-dt*3.2);
+  if(game.flash>0) game.flash=Math.max(0,game.flash-dt*2.4);
+  if(game.glow>0) game.glow=Math.max(0,game.glow-dt*2);
+  if(game.confetti>0){ game.confetti-=dt; if(motionOn()&&Math.random()<.5) spawnParticles(rand(0,W),-6,choice([COL.brass,COL.hold,COL.post]),1,{g:120,spMin:20,spMax:60,lift:-40}); }
+
+  // idle ambience on non-play screens: let the wheel drift slowly
+  if(!active){ wheel.angle -= dt*0.35; return; }
+
+  updatePlay(dt);
+}
+
+function updatePlay(dt){
+  const L=activeDef();
+  const prevAngle=wheel.angle;
+
+  if(game.phase==="spinup"){
+    game.spinupT+=dt;
+    wheel.omega=lerp(0, L.omega, easeOutCubic(clamp(game.spinupT/0.3,0,1)));
+    wheel.angle -= wheel.omega*dt;
+    if(game.spinupT>=0.3){ wheel.omega=L.omega; game.phase="spin"; }
+  } else if(game.phase==="spin"){
+    wheel.omega=L.omega;
+    wheel.angle -= wheel.omega*dt;
+    game.patience-=dt;
+    if(game.patience<=0){ forceLetThrough(); }        // dithered too long -> they grab a post
+  } else if(game.phase==="stopping"){
+    wheel.omega=Math.max(0, wheel.omega - wheel.decelRate*dt);
+    wheel.angle -= wheel.omega*dt;
+    if(wheel.omega<=0.0001){ landAndResolve(); }
+  } else if(game.phase==="resolved"){
+    game.resolveT-=dt; game.figure.hop=Math.min(1,game.figure.hop+dt*4);
+    if(game.resolveT<=0){ game.roundIdx++; game.figure.present=false; nextRound(false); }
+  }
+
+  // rhythmic "tick" as seat boundaries cross the gate (audio + feel)
+  if(motionOn()||settings.sound){
+    const ss=seatAngularSize();
+    const before=Math.floor((-prevAngle)/ss), after=Math.floor((-wheel.angle)/ss);
+    if(after!==before && (game.phase==="spin"||game.phase==="stopping")) Sound.tick();
+  }
+
+  if(game.trust<=0){ game.trust=0; updateHUD(); return finish(); }
+  updateHUD();
+}
+
+/* resolve after the wheel has stopped: grade by which seat + how centred */
+function landAndResolve(){
+  const s=seatAtGate(); const seat=wheel.seats[s.idx]; const L=activeDef();
+  let kind;
+  if(seat.kind==="hold"){ kind = s.err<=L.perfect ? "perfect" : "good"; }
+  else kind = "miss";
+  resolveRound(kind, s.idx);
+}
+/* the figure dithered past the patience window: the door lets them through */
+function forceLetThrough(){
+  // snap the wheel to a nearby POST seat so the outcome is an honest miss
+  const n=wheel.seats.length, ss=TAU/n;
+  let idx=seatAtGate().idx;
+  if(wheel.seats[idx].kind!=="post"){
+    for(let d=1;d<n;d++){ const a=(idx+d)%n, b=((idx-d)%n+n)%n;
+      if(wheel.seats[a].kind==="post"){ idx=a; break; } if(wheel.seats[b].kind==="post"){ idx=b; break; } }
+  }
+  wheel.angle = -idx*ss;                       // put that post exactly at the gate
+  wheel.omega=0; game.phase="stopping";        // fall straight into resolve next tick
+  wheel._forced=true;
+  resolveRound("miss", idx, true);
+}
+
+/* ---- the single scoring path (tap, patience, and debug all route here) ---- */
+function resolveRound(kind, seatIdx, dithered){
+  if(game.phase==="resolved") return;
+  const seat=wheel.seats[seatIdx] || {kind:"post",label:"Post"};
+  game.outcome={ kind, seatIdx, label:seat.label };
+  game.phase="resolved"; game.resolveT=(kind==="miss"?0.85:0.7);
+  wheel.omega=0;
+  const gx=wheelCX(), gy=wheelCY()-wheelR();     // the gate position (top of wheel)
+
+  if(kind==="perfect"){
+    game.held++; game.streak++; if(game.streak>game.bestStreak) game.bestStreak=game.streak;
+    game.flash=.18; game.flashCol=COL.hold; game.glow=1;
+    spawnParticles(gx,gy,COL.hold, motionOn()?16:4,{spMin:50,spMax:210,lift:30});
+    spawnFloater(gx,gy-24,"HELD!",COL.hold,true);
+    Sound.perfect();
+    reformMaybe(gx,gy);
+    updateStreakHUD();
+    say(`Nailed the ${seat.label}. Door held. ${game.streak>1?"Streak "+game.streak+".":""}`);
+  } else if(kind==="good"){
+    game.held++; game.streak++; if(game.streak>game.bestStreak) game.bestStreak=game.streak;
+    const cut=Math.min(game.trust, SCORE.good);
+    game.trust=Math.max(0,game.trust-cut);
+    game.flash=.12; game.flashCol=COL.hold; game.glow=.6;
+    spawnParticles(gx,gy,COL.hold, motionOn()?9:3,{spMin:30,spMax:140,lift:20});
+    spawnFloater(gx,gy-22,"held −"+Math.round(cut),"#9ff0c6");
+    Sound.good();
+    updateStreakHUD();
+    say(`Caught the edge of ${seat.label}. Held, just. ${game.streak>1?"Streak "+game.streak+".":""}`);
+  } else {
+    game.missed++; game.streak=0;
+    const cut=Math.min(game.trust, SCORE.miss);
+    game.trust=Math.max(0,game.trust-cut);
+    game.flash=.6; game.flashCol=COL.red;
+    if(motionOn()){ game.shake=Math.min(1,game.shake+.7); game.hitstop=0.05; }
+    spawnParticles(gx,gy,COL.red, motionOn()?15:4,{spMin:60,spMax:230});
+    spawnFloater(gx,gy-22,(dithered?"LET THROUGH ":"→ ")+seat.label.toUpperCase()+" −"+Math.round(cut),"#ff9d8a");
+    Sound.miss();
+    updateStreakHUD();
+    say(`${dithered?"Dithered — ":""}They took the ${seat.label}. ${Math.round(game.trust)} trust left.`);
+  }
+}
+function reformMaybe(gx,gy){
+  if(game.state!=="bonus" && game.streak>0 && game.streak%SCORE.reformEvery===0 && game.trust<100){
+    const amt=Math.min(100-game.trust, SCORE.reformAmt);
+    if(amt>0){ game.trust=Math.min(100,game.trust+amt); spawnFloater(gx,gy-44,"REFORM +"+Math.round(amt),"#8ff0c2"); }
+  }
+}
+
+/* ---- HUD sync ------------------------------------------------------------- */
+function updateHUD(){
+  const v=Math.round(game.trust);
+  $("hud-trust").innerHTML=`${v}<small>/100</small>`;
+  const fill=$("hud-fill"); fill.style.width=game.trust+"%";
+  fill.classList.toggle("flash", game.trust<40);
+  const prog=clamp(game.roundIdx/Math.max(1,game.roundsThisLevel),0,1);
+  $("hud-progress").style.width=(prog*100)+"%";
+}
+function updateStreakHUD(){
+  const el=$("hud-streak");
+  if(game.streak>=2){ el.textContent="HELD ×"+game.streak; el.classList.add("show"); }
+  else el.classList.remove("show");
+}
+
+/* ============================================================================
+   13) RENDER
+   ========================================================================== */
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(game.shake>0 && motionOn()){ const s=game.shake*7; ctx.translate(rand(-s,s),rand(-s,s)); }
+  drawBackground();
+  const showWorld=["title","playing","bonus","transition","pause"].includes(game.state);
+  if(showWorld){
+    drawSpotlight();
+    drawWheel();
+    drawGate();
+    drawFigure();
+  }
+  drawParticles(); drawFloaters();
+  ctx.restore();
+  if(game.flash>0){
+    ctx.globalAlpha=game.flash*.5;
+    const g=ctx.createRadialGradient(wheelCX(),wheelCY(),H*.10,wheelCX(),wheelCY(),H*.72);
+    g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,game.flashCol);
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  }
+  drawVignette();
+}
+
+function drawBackground(){
+  const hc=settings.contrast;
+  ctx.fillStyle=hc?"#04100F":COL.ink; ctx.fillRect(0,0,W,H);
+  // marble pillars
+  ctx.save();
+  ctx.strokeStyle=hc?"rgba(205,225,225,.06)":"rgba(147,170,176,.05)"; ctx.lineWidth=1;
+  for(let x=W*0.12; x<W; x+=W*0.22){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  ctx.restore();
+}
+function drawSpotlight(){
+  if(!motionOn() && !settings.contrast){}
+  const g=ctx.createRadialGradient(wheelCX(),wheelCY()-wheelR()*0.2,wheelR()*0.2, wheelCX(),wheelCY(),wheelR()*1.9);
+  g.addColorStop(0,"rgba(241,214,140,.10)"); g.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+
+function drawWheel(){
+  const cx=wheelCX(), cy=wheelCY(), R=wheelR(), n=wheel.seats.length, ss=TAU/n;
+  // outer brass ring
+  ctx.save();
+  ctx.lineWidth=Math.max(4,R*0.05); ctx.strokeStyle="rgba(217,178,90,.55)";
+  ctx.beginPath(); ctx.arc(cx,cy,R+ctx.lineWidth*0.6,0,TAU); ctx.stroke();
+  ctx.restore();
+
+  // seats as wedges
+  for(let i=0;i<n;i++){
+    const seat=wheel.seats[i];
+    const a0=gateAngle + i*ss + wheel.angle - ss/2;
+    const a1=a0+ss;
+    const mid=a0+ss/2;
+    const isHold=seat.kind==="hold";
+    const atGate = (game.phase==="resolved" && game.outcome && game.outcome.seatIdx===i);
+    // wedge fill
+    const col = isHold?COL.hold:COL.post, deep=isHold?COL.holdDeep:COL.postDeep;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,R,a0,a1); ctx.closePath();
+    const grad=ctx.createRadialGradient(cx,cy,R*0.2,cx,cy,R);
+    grad.addColorStop(0, shade(deep,-.08)); grad.addColorStop(1, col);
+    ctx.fillStyle=grad; ctx.globalAlpha=isHold?0.96:0.9; ctx.fill(); ctx.globalAlpha=1;
+    // wedge divider
+    ctx.strokeStyle="rgba(8,20,20,.5)"; ctx.lineWidth=2; ctx.stroke();
+    // resolved highlight
+    if(atGate){
+      ctx.save(); ctx.globalAlpha=.35+0.35*Math.sin(performance.now()/90);
+      ctx.fillStyle= game.outcome.kind==="miss"?"rgba(228,87,61,.6)":"rgba(255,255,255,.5)";
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,a0,a1); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    // seat icon + label (rotated along the spoke, upright-ish near the rim)
+    drawSeatFace(cx,cy,R,mid,seat,isHold);
+  }
+
+  // hub
+  ctx.save();
+  const hubR=R*0.2;
+  const hg=ctx.createRadialGradient(cx-hubR*0.3,cy-hubR*0.3,hubR*0.2,cx,cy,hubR);
+  hg.addColorStop(0,COL.brassLite); hg.addColorStop(1,COL.brassDeep);
+  ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(cx,cy,hubR,0,TAU); ctx.fill();
+  ctx.strokeStyle="rgba(0,0,0,.3)"; ctx.lineWidth=2; ctx.stroke();
+  // rotating spokes on the hub to sell the spin
+  ctx.strokeStyle="rgba(42,34,8,.5)"; ctx.lineWidth=3; ctx.lineCap="round";
+  for(let i=0;i<n;i++){ const a=gateAngle+i*ss+wheel.angle; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*hubR*0.85, cy+Math.sin(a)*hubR*0.85); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawSeatFace(cx,cy,R,mid,seat,isHold){
+  const rx=cx+Math.cos(mid)*R*0.66, ry=cy+Math.sin(mid)*R*0.66;
+  ctx.save(); ctx.translate(rx,ry);
+  let rot=mid+Math.PI/2; // face outward
+  if(Math.cos(mid)<0){}  // keep consistent orientation
+  ctx.rotate(rot);
+  // chair icon
+  const s=R*0.13;
+  ctx.fillStyle=isHold?"#04231a":"#3a2404"; ctx.strokeStyle=isHold?"#04231a":"#3a2404";
+  drawChair(0,-s*0.1,s);
+  // label (small, may wrap to 2 lines) placed further out
+  ctx.rotate(0);
+  ctx.fillStyle=isHold?"rgba(4,35,26,.95)":"rgba(58,36,4,.95)";
+  ctx.textAlign="center"; ctx.font=`700 ${Math.max(8,Math.round(R*0.062))}px `+getSans();
+  wrapText(seat.label.toUpperCase(), 0, s*1.15, R*0.62, Math.max(9,R*0.072));
+  ctx.restore();
+}
+function drawChair(x,y,s){
+  ctx.save(); ctx.translate(x,y); ctx.lineWidth=Math.max(1.4,s*0.14); ctx.lineJoin="round"; ctx.lineCap="round";
+  // seat + back (simple side-on chair glyph)
+  ctx.beginPath();
+  ctx.moveTo(-s*0.5,-s*0.7); ctx.lineTo(-s*0.5,s*0.1); ctx.lineTo(s*0.5,s*0.1);   // back + seat top
+  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-s*0.5,s*0.1); ctx.lineTo(-s*0.5,s*0.7);            // front leg
+  ctx.moveTo(s*0.5,s*0.1); ctx.lineTo(s*0.5,s*0.7); ctx.stroke();                 // back leg
+  ctx.restore();
+}
+
+function drawGate(){
+  const cx=wheelCX(), gy=wheelCY()-wheelR();
+  // pointer triangle above the wheel pointing down at the gate
+  ctx.save();
+  const glow=game.glow;
+  ctx.fillStyle=COL.brassLite;
+  if(motionOn()){ ctx.shadowColor="rgba(241,214,140,"+(0.5+glow*0.4)+")"; ctx.shadowBlur=14+glow*16; }
+  const w=Math.max(12,wheelR()*0.14);
+  ctx.beginPath();
+  ctx.moveTo(cx-w, gy-w*1.5); ctx.lineTo(cx+w, gy-w*1.5); ctx.lineTo(cx, gy-w*0.15); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // patience ring — a shrinking arc just outside the wheel while spinning
+  if((game.state==="playing"||game.state==="bonus") && (game.phase==="spin")){
+    const p=clamp(game.patience/game.patienceMax,0,1);
+    const R=wheelR();
+    ctx.save(); ctx.lineWidth=Math.max(3,R*0.045); ctx.lineCap="round";
+    ctx.strokeStyle="rgba(147,170,176,.16)";
+    ctx.beginPath(); ctx.arc(wheelCX(),wheelCY(),R+ctx.lineWidth*1.9,0,TAU); ctx.stroke();
+    ctx.strokeStyle = p<0.34 ? COL.red : COL.brass;
+    ctx.beginPath(); ctx.arc(wheelCX(),wheelCY(),R+ctx.lineWidth*1.9, gateAngle, gateAngle+TAU*p); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawFigure(){
+  if(!game.figure.present) return;
+  const cx=wheelCX(), gy=wheelCY()-wheelR();
+  const S=clamp(wheelR()/150,0.7,1.25);
+  const bodyH=64*S, bodyW=44*S;
+  // seat the figure "into" the wheel on resolve (hop toward the gate seat)
+  const hop = game.phase==="resolved" ? easeOutCubic(game.figure.hop) : 0;
+  const baseY = gy - bodyH*0.9 - 22*S;
+  const y = lerp(baseY, gy - bodyH*0.2, hop);
+  const x = cx;
+  const alpha = game.phase==="resolved" ? (1-hop*0.85) : 1;
+  ctx.save(); ctx.globalAlpha=alpha;
+  // shadow
+  ctx.globalAlpha=alpha*0.3; ctx.fillStyle="rgba(0,0,0,.5)";
+  ctx.beginPath(); ctx.ellipse(x, baseY+bodyH*0.55, bodyW*0.42, 5*S, 0,0,TAU); ctx.fill();
+  ctx.globalAlpha=alpha;
+  // silhouette (faceless)
+  ctx.fillStyle=COL.silhouette;
+  const torsoTop=y-bodyH*0.12, torsoH=bodyH*0.6, torsoW=bodyW*0.9;
+  roundRect(x-torsoW*0.5,torsoTop,torsoW,torsoH,12*S); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x-torsoW*0.5,torsoTop+7*S); ctx.quadraticCurveTo(x,torsoTop-10*S,x+torsoW*0.5,torsoTop+7*S);
+  ctx.lineTo(x+torsoW*0.5,torsoTop+2*S); ctx.lineTo(x-torsoW*0.5,torsoTop+2*S); ctx.closePath(); ctx.fill();
+  const headR=bodyW*0.26, headY=y-bodyH*0.34;
+  ctx.beginPath(); ctx.arc(x,headY,headR,0,TAU); ctx.fill();
+  ctx.strokeStyle="rgba(255,255,255,.10)"; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(x-headR*0.3,headY-headR*0.2,headR*0.85,Math.PI*0.9,Math.PI*1.5); ctx.stroke();
+  // role tag above the head
+  if(game.phase!=="resolved"){
+    const label=game.figure.role.toUpperCase();
+    ctx.font=`700 ${Math.round(9.5*S)}px `+getSans();
+    const tw=ctx.measureText(label).width, padX=7*S, tagW=tw+padX*2, tagH=15*S, tagY=headY-headR-tagH-4*S;
+    ctx.fillStyle="rgba(8,20,20,.9)"; roundRect(x-tagW*0.5,tagY,tagW,tagH,tagH*0.5); ctx.fill();
+    ctx.strokeStyle="rgba(217,178,90,.5)"; ctx.lineWidth=1; roundRect(x-tagW*0.5,tagY,tagW,tagH,tagH*0.5); ctx.stroke();
+    ctx.fillStyle=COL.paper; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(label,x,tagY+tagH*0.5+0.5); ctx.textBaseline="alphabetic";
+  }
+  ctx.restore();
+}
+
+function drawVignette(){
+  const g=ctx.createRadialGradient(W/2,H/2,H*.35,W/2,H/2,H*.82);
+  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,.42)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+function roundRect(x,y,w,h,r){ w=Math.max(0,w); h=Math.max(0,h); r=Math.max(0,Math.min(r,w/2,h/2));
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function wrapText(text,cx,y,maxW,lh){
+  const words=String(text).split(" "); let line="", lines=[];
+  for(const w of words){ const t=line?line+" "+w:w; if(ctx.measureText(t).width>maxW&&line){lines.push(line);line=w;} else line=t; }
+  if(line)lines.push(line); if(lines.length>2){ lines=[lines[0], lines.slice(1).join(" ")]; }
+  const startY=y; lines.forEach((ln,i)=>ctx.fillText(ln,cx,startY+i*lh));
+}
+function shade(hex,amt){ // lighten/darken a hex colour by amt (-1..1)
+  const n=parseInt(hex.slice(1),16); let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  const f=amt<0?0:255, t=Math.abs(amt);
+  r=Math.round(lerp(r,f,t)); g=Math.round(lerp(g,f,t)); b=Math.round(lerp(b,f,t));
+  return `rgb(${r},${g},${b})`;
+}
+
+/* ============================================================================
+   14) MAIN LOOP (fixed timestep)
+   ========================================================================== */
+new ResizeObserver(resize).observe($("field"));
+window.addEventListener("resize",resize);
+resize();
+
+let last=performance.now(), acc=0; const STEP=1/60;
+function frame(t){
+  if(canvas.clientWidth!==W||canvas.clientHeight!==H){ resize(); }
+  let dt=(t-last)/1000; last=t; if(dt>0.1)dt=0.1;
+  if(game.hitstop>0){ game.hitstop-=dt; }
+  else { acc+=dt*game.timeScale; let n=0; while(acc>=STEP && n<5){ update(STEP); acc-=STEP; n++; } if(acc>STEP*5)acc=0; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================================
+   15) RESULTS + LEADERBOARD RENDERING
+   ========================================================================== */
+function verdictFor(score){
+  if(score>=90) return "You kept the door honest. Cooling-off, every time.";
+  if(score>=70) return "Held more than you lost — but a few spun straight through.";
+  if(score>=45) return "The wheel got the better of you as often as not.";
+  if(score>0)   return "Post after post went through before you could stop it.";
+  return "The music never stopped. Everyone landed a plum post.";
+}
+function renderResults(){
+  const score=Math.round(game.trust);
+  const el=$("res-score"); const dur=motionOn()?700:0, t0=performance.now();
+  (function tick(now){
+    const p=dur?clamp((now-t0)/dur,0,1):1;
+    el.textContent=Math.round(easeOutCubic(p)*score);
+    if(p<1) requestAnimationFrame(tick);
+  })(t0);
+  $("res-verdict").textContent=verdictFor(score);
+  $("res-held").textContent=game.held;
+  $("res-best").textContent=game.bestStreak;
+  $("res-miss").textContent=game.missed;
+  const c=CONTENT.citation;
+  $("res-citation").innerHTML =
+    `<span class="pending">${esc(c.figure)}</span> ${esc(c.framing)}` +
+    `<span class="src">Source: ${esc(c.source)} · ${esc(c.date)}</span>`;
+  $("res-disclaimer").innerHTML="<strong>Disclaimer.</strong> "+esc(CONTENT.disclaimer);
+  say(`Music's over. ${score} of 100 public trust held. Doors held ${game.held}, slipped through ${game.missed}.`);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---- Leaderboard store: LOCAL now, REMOTE (Cloudflare) later --------------
+   Swap point for launch: implement RemoteLeaderboard against a serverless
+   endpoint (Cloudflare Pages Function + D1) and flip USE_REMOTE. PII stays
+   server-side there; this local store keeps data on-device only (demo/fallback).
+   -------------------------------------------------------------------------- */
+const USE_REMOTE=false;
+const LocalLeaderboard={
+  KEY:"rd_musicalchairs_lb_v1",
+  all(){ return store.get(this.KEY,[]) || []; },
+  async top(n=10){ return this.all().slice(0,n); },
+  async submit(entry){
+    const list=this.all();
+    const rec={ id:(performance.now()+"_"+Math.random()).toString(),
+      first:entry.first, postcode:entry.postcode, score:entry.score, ts:Date.now(),
+      _last:entry.last, _email:entry.email };   // private fields — on-device only here
+    list.push(rec); list.sort((a,b)=>b.score-a.score);
+    const rank=list.findIndex(r=>r.id===rec.id)+1;
+    store.set(this.KEY, list.slice(0,100));
+    return { rank, id:rec.id, total:list.length };
+  },
+};
+const Leaderboard = USE_REMOTE ? null /* RemoteLeaderboard (launch) */ : LocalLeaderboard;
+
+async function renderLeaderboard(){
+  const rows=await Leaderboard.top(10);
+  const list=$("lb-list"); list.innerHTML="";
+  if(!rows.length){ list.innerHTML='<div class="lb-empty">No scores yet — you could be first.</div>'; }
+  rows.forEach((r,i)=>{
+    const div=document.createElement("div");
+    div.className="lb-row"+(r.id===game.lastPlayerId?" me":"");
+    div.innerHTML=`<span class="rank">${i+1}</span>`+
+      `<span class="who">${esc(r.first||"Player")}<small>Postcode ${esc(r.postcode||"—")}</small></span>`+
+      `<span class="sc">${Math.round(r.score)}</span>`;
+    list.appendChild(div);
+  });
+  $("lb-note").textContent = USE_REMOTE ? "" :
+    "Scores are saved on this device (demo mode). A shared board is enabled at launch.";
+}
+
+/* ============================================================================
+   16) UI WIRING
+   ========================================================================== */
+$("framing-fact").textContent=CONTENT.framingFact;
+$("framing-plan").textContent=CONTENT.framingPlan;
+$("foot-auth").textContent=CONTENT.authorisation;
+$("foot-disclaimer").textContent=CONTENT.disclaimer;
+$("form-privacy").innerHTML=esc(CONTENT.privacy);
+$("consent-label").textContent=CONTENT.consentLabel;
+$("btn-donate").href=CONTENT.donateUrl; $("btn-donate2").href=CONTENT.donateUrl;
+$("btn-policy").href=CONTENT.policyUrl; $("btn-policy2").href=CONTENT.policyUrl;
+
+// how-to legend icons
+$("lg-tap").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V5a2 2 0 0 1 4 0v6"/><path d="M12 11V4a2 2 0 0 1 4 0v7"/><path d="M16 11a2 2 0 0 1 4 0v4a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-3l-2.5-4a2 2 0 0 1 3.4-2L8 13"/></svg>';
+$("lg-hold").innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4v7a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V4h-2v6a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4zM11 15h2v5h-2z"/></svg>';
+$("lg-post").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.6"/><path d="M20 5v6h-6"/></svg>';
+
+$("btn-play").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-how").onclick=goHowTo;
+$("btn-how-start").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-transition").onclick=()=>{ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); };
+$("btn-resume").onclick=resumeGame;
+$("btn-restart").onclick=()=>{ hideAllScreens(); startRun(); };
+$("t-pause").onclick=()=>{ game.state==="pause"?resumeGame():pauseGame(); };
+$("btn-replay").onclick=startRun;
+$("btn-replay2").onclick=startRun;
+$("btn-leaderboard").onclick=()=>{ game.state="form"; hideAllScreens(); showScreen("form"); setFooter(false); $("f-first").focus(); };
+$("btn-skip").onclick=async()=>{ game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true); };
+
+$("btn-share").onclick=async()=>{
+  const score=Math.round(game.trust); const text=CONTENT.shareText(score);
+  const url=location.href.split("#")[0];
+  try{
+    if(navigator.share){ await navigator.share({title:"The Revolving Door — Musical Chairs",text,url}); }
+    else { await navigator.clipboard.writeText(text+" "+url); toast("Link copied"); }
+  }catch{}
+};
+
+$("lead-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const first=$("f-first").value.trim(), last=$("f-last").value.trim(),
+        email=$("f-email").value.trim(), postcode=$("f-postcode").value.trim(),
+        consent=$("f-consent").checked, hp=$("f-website").value;
+  let ok=true;
+  const setErr=(id,inp,msg)=>{ $(id).textContent=msg||""; if(inp) $(inp).setAttribute("aria-invalid", msg?"true":"false"); if(msg)ok=false; };
+  setErr("e-first","f-first", first?"":"Enter your first name");
+  setErr("e-last","f-last", last?"":"Enter your last name");
+  setErr("e-email","f-email", /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?"":"Enter a valid email");
+  setErr("e-postcode","f-postcode", /^\d{4}$/.test(postcode)?"":"Enter a 4-digit postcode");
+  setErr("e-consent",null, consent?"":"Please tick to continue");
+  if(hp) return;
+  if(!ok) return;
+  const res=await Leaderboard.submit({first,last,email,postcode,score:Math.round(game.trust)});
+  game.lastPlayerId=res.id;
+  game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true);
+  say(`You ranked number ${res.rank} of ${res.total}.`);
+});
+
+function toast(msg){
+  const t=document.createElement("div"); t.textContent=msg;
+  t.style.cssText="position:absolute;left:50%;bottom:80px;transform:translateX(-50%);z-index:20;"+
+    "background:rgba(8,20,20,.95);border:1px solid var(--card-brd);color:var(--paper);"+
+    "padding:10px 16px;border-radius:10px;font:600 13px var(--font)";
+  $("field").appendChild(t); setTimeout(()=>t.remove(),1600);
+}
+
+/* ---- Toggles -------------------------------------------------------------- */
+const ICONS={
+  soundOn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"/></svg>',
+  soundOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 5m0-5-5 5"/></svg>',
+  motion:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+  contrast:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+};
+function applyToggles(){
+  document.documentElement.setAttribute("data-motion", settings.motion);
+  document.documentElement.setAttribute("data-contrast", settings.contrast?"on":"off");
+  const s=$("t-sound"); s.innerHTML=settings.sound?ICONS.soundOn:ICONS.soundOff;
+  s.setAttribute("aria-pressed",settings.sound); s.title="Sound ("+(settings.sound?"on":"off")+")";
+  const m=$("t-motion"); m.innerHTML=ICONS.motion; m.setAttribute("aria-pressed", settings.motion==="off"); m.title=(motionOn()?"Reduce motion":"Motion reduced");
+  const c=$("t-contrast"); c.innerHTML=ICONS.contrast; c.setAttribute("aria-pressed",settings.contrast); c.title="High contrast ("+(settings.contrast?"on":"off")+")";
+  $("t-pause").innerHTML=ICONS.pause;
+}
+$("t-sound").onclick=()=>{ settings.sound=!settings.sound; store.set("rd_sound",settings.sound); if(settings.sound){Sound.init();Sound.good();} applyToggles(); };
+$("t-motion").onclick=()=>{ settings.motion=motionOn()?"off":"on"; store.set("rd_motion",settings.motion); applyToggles(); };
+$("t-contrast").onclick=()=>{ settings.contrast=!settings.contrast; store.set("rd_contrast",settings.contrast); applyToggles(); };
+applyToggles();
+
+/* ============================================================================
+   16b) TEST HOOK — inert in production; only active with ?debug or #debug.
+   ========================================================================== */
+if(new URLSearchParams(location.search).has("debug") || location.hash==="#debug"){
+  window.__mc = {
+    game, wheel, LEVELS, BONUS,
+    step(dt=1/60){ update(dt); render(); },
+    play(){ startRun(); },
+    seatAtGate,
+    // resolve the current round directly (bypasses timing) — for flow/scoring tests
+    force(kind){
+      if(game.state!=="playing" && game.state!=="bonus") return null;
+      if(game.phase!=="spin" && game.phase!=="spinup" && game.phase!=="stopping") return null;
+      // pick a representative seat for the kind
+      let idx=0;
+      if(kind==="miss"){ idx=wheel.seats.findIndex(s=>s.kind==="post"); if(idx<0)idx=0; }
+      else { idx=wheel.seats.findIndex(s=>s.kind==="hold"); if(idx<0)idx=0; }
+      wheel.omega=0; resolveRound(kind, idx); return {kind, idx};
+    },
+    // land the gate exactly on a target seat kind, then let the real path resolve
+    aimTap(kind){
+      if(game.phase!=="spin") return null;
+      const n=wheel.seats.length, ss=TAU/n;
+      let idx = kind==="miss" ? wheel.seats.findIndex(s=>s.kind==="post")
+                              : wheel.seats.findIndex(s=>s.kind==="hold");
+      if(idx<0) idx=0;
+      wheel.angle = -idx*ss;                 // seat idx dead-centre at the gate
+      wheel.omega = 0.0000001;               // let stopping resolve immediately
+      game.phase="stopping"; wheel.decelRate=1;
+      return {aimedIdx:idx};
+    },
+    // drive a whole run resolving every round to `kind`
+    run(kind, maxSteps=30000){
+      startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        if(game.state==="playing"||game.state==="bonus"){
+          if(game.phase==="spin"||game.phase==="spinup"){ this.force(kind); }
+          update(1/60); n++;
+        } else break;
+      }
+      return { state:game.state, score:Math.round(game.trust), held:game.held, missed:game.missed, best:game.bestStreak, steps:n };
+    },
+    autopilot(){ return this.run("perfect"); },   // expect 100
+    failpilot(){ return this.run("miss"); },       // expect 0
+    // never tap — every figure dithers into a post (patience auto-miss)
+    idlepilot(maxSteps=40000){
+      startRun(); let n=0;
+      while(game.state!=="results" && n<maxSteps){
+        if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+        update(1/60); n++;
+        if(game.state!=="playing"&&game.state!=="bonus"&&game.state!=="transition") break;
+      }
+      return { state:game.state, score:Math.round(game.trust), missed:game.missed, steps:n };
+    },
+  };
+}
+
+/* ============================================================================
+   17) BOOT / LOADING
+   ========================================================================== */
+(function boot(){
+  const bar=$("load-bar"); let p=0;
+  const iv=setInterval(()=>{ p=Math.min(100,p+rand(14,30)); bar.style.width=p+"%";
+    if(p>=100){ clearInterval(iv); setTimeout(goTitle, 260); }
+  }, 130);
+})();
+</script>
+</body>
+</html>
