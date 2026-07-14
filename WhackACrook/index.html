@@ -1,0 +1,1888 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="description" content="Catch and Release — Whack-a-Crook. Tap the figures before they duck away. Catch one, and the same case number is back up somewhere else. How much Business Confidence can you hold?" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#101623" />
+<title>Catch and Release — Whack-a-Crook</title>
+<style>
+/* ============================================================================
+   CATCH AND RELEASE — WHACK-A-CROOK  (self-contained static build)
+   No build step, no dependencies, no external network calls, no CDN.
+   Mechanic: TAP THE TARGET IN A GRID — a pure reflex verb. Figures pop up in a
+             fixed 3x3 of street spots; you tap each one inside its window.
+             (NOT free-roam patrol, NOT tower placement, NOT card triage —
+              those are the three sibling builds.)
+   Suite: "Catch and Release" — the family look is a night street.
+   Single committed dark theme. Colour is always backed by icon + label.
+   ========================================================================== */
+:root{
+  --ink:#101623;            /* night street — deep blue-charcoal field */
+  --ink-2:#161F30;          /* raised surface */
+  --paper:#EDF2F7;          /* text on dark */
+  --paper-dim:#94A5BC;      /* muted text */
+  --amber:#F2A93B;          /* streetlight / BUSINESS CONFIDENCE — primary accent */
+  --amber-lite:#FFD284;
+  --amber-deep:#B87516;
+  --blue:#4C8FE8;           /* police / officer / the player */
+  --blue-lite:#8FC0FF;
+  --blue-deep:#1F4F8F;
+  --green:#4FD18B;          /* CUSTODY — the good outcome */
+  --green-deep:#1B7A4E;
+  --red:#E4573D;            /* BAIL GRANTED — the bad outcome */
+  --red-deep:#8F2C1C;
+  --silhouette:#2A3448;     /* the faceless offender figure */
+  --line:rgba(148,165,188,.16);
+  --card:rgba(22,31,48,.88);
+  --card-brd:rgba(148,165,188,.22);
+  --focus:#8FC0FF;
+  --radius:16px;
+  --shadow:0 18px 50px rgba(0,0,0,.5);
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","SFMono-Regular","Segoe UI Mono",Menlo,Consolas,monospace;
+  --draft-h:20px;           /* INTERNAL_DRAFT banner height; JS zeroes this when the flag is off */
+}
+/* high-contrast toggle overrides */
+html[data-contrast="on"]{
+  --ink:#05080F; --paper:#FFFFFF; --paper-dim:#C8D6EA;
+  --green:#7BF0C0; --red:#FF8368; --amber:#FFC066; --blue:#8FC0FF;
+  --line:rgba(210,225,245,.32); --card:rgba(5,8,15,.95); --card-brd:rgba(210,225,245,.46);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+html{background:#05080e}
+body{
+  font-family:var(--font); color:var(--paper);
+  background:radial-gradient(120% 80% at 50% -10%, #1d2740 0%, #0f1522 45%, #05080e 100%);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow:hidden; overscroll-behavior:none;
+}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- Stage: centered vertical play strip, framed on wide screens ---------- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#field{
+  position:relative; width:min(100vw,560px); height:100dvh; height:100vh;
+  overflow:hidden; box-shadow:0 0 0 1px var(--line), 0 30px 90px rgba(0,0,0,.6);
+  background:var(--ink);
+}
+@media (min-width:600px){ #field{border-radius:22px; height:min(100dvh,940px); height:min(100vh,940px)} }
+canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* ---- INTERNAL DRAFT watermark (P0) ---------------------------------------
+   Visible on every screen and during play. Slim, top-centre, never in the
+   action. Removed completely by INTERNAL_DRAFT=false (which also zeroes
+   --draft-h, so nothing else shifts). -------------------------------------- */
+#draft{
+  position:absolute;left:0;right:0;top:0;height:var(--draft-h);z-index:30;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  background:linear-gradient(0deg, rgba(242,169,59,.13), rgba(242,169,59,.07));
+  border-bottom:1px solid rgba(242,169,59,.45);
+}
+#draft::before{content:"";position:absolute;inset:0;opacity:.4;
+  background:repeating-linear-gradient(135deg, rgba(242,169,59,.55) 0 5px, transparent 5px 11px)}
+#draft span{position:relative;background:var(--ink);padding:0 9px;color:var(--amber-lite);
+  font:800 9px/1 var(--font);letter-spacing:.16em;white-space:nowrap}
+
+/* ---- HUD ------------------------------------------------------------------ */
+#hud{position:absolute;left:0;right:0;top:var(--draft-h);padding:12px 16px;
+  display:none; flex-direction:column; gap:9px; pointer-events:none; z-index:6}
+#hud.show{display:flex}
+.hud-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.level-pill{font:600 12px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--paper-dim);background:rgba(10,14,24,.6);border:1px solid var(--line);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px)}
+.streak-pill{font:700 12px/1 var(--mono);letter-spacing:.04em;color:var(--blue-lite);
+  background:rgba(76,143,232,.12);border:1px solid rgba(76,143,232,.45);
+  padding:7px 11px;border-radius:999px;backdrop-filter:blur(6px);white-space:nowrap;
+  opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease}
+.streak-pill.show{opacity:1;transform:none}
+.meter-wrap{flex:1}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.meter-label{font:600 11px/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--paper-dim)}
+.meter-val{font:700 15px/1 var(--mono);color:var(--amber-lite)}
+.meter-val small{color:var(--paper-dim);font-weight:600}
+.meter-bar{height:9px;border-radius:999px;background:rgba(10,14,24,.75);border:1px solid var(--line);overflow:hidden}
+.meter-fill{height:100%;width:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--amber-deep),var(--amber));
+  box-shadow:0 0 14px rgba(242,169,59,.5);transition:width .3s cubic-bezier(.2,.8,.2,1)}
+.meter-fill.flash{background:linear-gradient(90deg,var(--red-deep),var(--red));box-shadow:0 0 14px rgba(228,87,61,.5)}
+/* shopfront-state caption: the meter's consequence, in words + icon (never colour alone) */
+.shop-pill{display:inline-flex;align-items:center;gap:6px;margin-top:6px;
+  font:700 10.5px/1 var(--font);letter-spacing:.09em;text-transform:uppercase;color:var(--paper-dim)}
+.shop-pill svg{width:12px;height:12px;flex:0 0 auto}
+.shop-pill[data-state="open"]{color:var(--green)}
+.shop-pill[data-state="reduced"]{color:var(--amber-lite)}
+.shop-pill[data-state="half"]{color:var(--amber)}
+.shop-pill[data-state="closed"]{color:var(--red)}
+.progress-line{height:3px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.progress-inner{height:100%;width:0;background:var(--paper-dim);opacity:.6;transition:width .2s linear}
+
+/* ---- Top-right toggles ---------------------------------------------------- */
+#toggles{position:absolute;top:calc(var(--draft-h) + 10px);right:12px;display:flex;gap:8px;z-index:8}
+.toggle{width:38px;height:38px;border-radius:11px;border:1px solid var(--card-brd);
+  background:rgba(10,14,24,.7);color:var(--paper-dim);cursor:pointer;display:grid;place-items:center;
+  backdrop-filter:blur(8px);transition:transform .12s ease,color .12s ease,border-color .12s}
+.toggle:hover{transform:translateY(-1px);color:var(--paper)}
+.toggle[aria-pressed="true"]{color:var(--amber);border-color:rgba(242,169,59,.5)}
+.toggle svg{width:18px;height:18px;display:block}
+.toggle:focus-visible,button:focus-visible,a.btn:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ---- Screens (DOM overlay for accessibility) ------------------------------ */
+.screen{position:absolute;inset:0;z-index:7;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:calc(24px + var(--draft-h)) 20px 24px;gap:18px;
+  overflow-y:auto;
+  background:radial-gradient(120% 70% at 50% 0%, rgba(22,31,48,.6), rgba(5,8,14,.9) 70%);
+  backdrop-filter:blur(3px)}
+.screen.show{display:flex;animation:fadeIn .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--card-brd);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 20px;display:flex;flex-direction:column;gap:15px}
+.eyebrow{font:700 12px/1 var(--font);letter-spacing:.16em;text-transform:uppercase;color:var(--amber)}
+h1.title{font:800 clamp(28px,7.6vw,42px)/1.02 var(--font);letter-spacing:-.02em;margin:0}
+h1.title .accent{color:var(--amber)}
+.subtitle{font:700 13px/1 var(--font);letter-spacing:.22em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:9px}
+.subtitle::before,.subtitle::after{content:"";height:1px;flex:1;background:var(--line)}
+h2{font:800 clamp(21px,5.6vw,28px)/1.05 var(--font);letter-spacing:-.01em;margin:0}
+p{margin:0;color:var(--paper-dim);font-size:15px;line-height:1.55}
+p.lead{color:var(--paper);font-size:16px}
+.attributed{font-size:13px;line-height:1.5;color:var(--paper-dim);
+  border-left:3px solid var(--amber);padding:10px 0 10px 13px;background:rgba(242,169,59,.05);border-radius:0 8px 8px 0}
+.attributed + .attributed{margin-top:-6px}
+.attributed .src{display:block;margin-top:6px;color:#7d8ea8;font-size:12px}
+.attributed .tag{display:block;margin-bottom:4px;font:700 9.5px/1 var(--font);letter-spacing:.14em;
+  text-transform:uppercase;color:#7d8ea8}
+.pending{color:var(--amber);font-weight:700;font-variant:small-caps;letter-spacing:.02em}
+
+/* buttons */
+.btn{appearance:none;border:0;cursor:pointer;font:700 16px/1 var(--font);letter-spacing:.01em;
+  padding:15px 18px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  text-decoration:none;transition:transform .12s cubic-bezier(.2,.8,.2,1),box-shadow .12s,filter .12s;width:100%;
+  min-height:48px}
+.btn:active{transform:translateY(1px) scale(.995)}
+.btn-primary{background:linear-gradient(180deg,var(--amber-lite),var(--amber));color:#2b1c04;
+  box-shadow:0 10px 26px rgba(242,169,59,.32),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(242,169,59,.4),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-ghost{background:rgba(255,255,255,.045);color:var(--paper);border:1px solid var(--card-brd)}
+.btn-ghost:hover{background:rgba(255,255,255,.09);transform:translateY(-1px)}
+.btn-green{background:linear-gradient(180deg,#7CEBB4,var(--green));color:#04241a;box-shadow:0 10px 26px rgba(79,209,139,.3)}
+.btn-row{display:flex;gap:10px}
+.btn-row .btn{width:auto;flex:1;font-size:15px}
+.btnset{display:flex;flex-direction:column;gap:10px}
+
+.controls-hint{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;color:var(--paper-dim);font-size:13px;align-items:center}
+.key{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 6px;border-radius:6px;
+  border:1px solid var(--card-brd);background:rgba(255,255,255,.05);font:700 12px/1 var(--mono);color:var(--paper)}
+
+/* how-to legend */
+.legend{display:flex;flex-direction:column;gap:12px}
+.legend-item{display:flex;align-items:center;gap:13px}
+.chip{width:46px;height:46px;border-radius:12px;flex:0 0 auto;display:grid;place-items:center}
+.chip svg{width:25px;height:25px;display:block}
+.chip.tap{background:linear-gradient(180deg,var(--blue-lite),var(--blue));color:#04152b}
+.chip.bail{background:linear-gradient(180deg,#F58166,var(--red));color:#2c0a04}
+.chip.cust{background:linear-gradient(180deg,#7CEBB4,var(--green));color:#04241a}
+.legend-item div p{font-size:13px}
+.legend-item strong{color:var(--paper);font-size:14px}
+/* keyboard map shown in the how-to */
+.kbdmap{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.03);
+  border:1px solid var(--line);border-radius:11px;padding:11px 12px}
+.kbdgrid{display:grid;grid-template-columns:repeat(3,20px);gap:3px;flex:0 0 auto}
+.kbdgrid i{display:grid;place-items:center;height:20px;border-radius:4px;background:rgba(255,255,255,.06);
+  border:1px solid var(--card-brd);font:700 10px/1 var(--mono);font-style:normal;color:var(--paper-dim)}
+.kbdmap p{font-size:12.5px}
+
+/* results */
+.result-score{text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}
+.result-score .big{font:800 clamp(44px,14vw,68px)/1 var(--mono);color:var(--amber-lite);letter-spacing:-.02em}
+.result-score .of{font-size:13.5px;color:var(--paper-dim);letter-spacing:.02em}
+.result-verdict{font:700 16px/1.35 var(--font);text-align:center}
+.result-stats{display:flex;gap:7px;justify-content:center}
+.stat{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:9px 4px;text-align:center}
+.stat b{display:block;font:800 19px/1 var(--mono);color:var(--paper)}
+.stat span{display:block;margin-top:4px;font-size:9.5px;color:var(--paper-dim);letter-spacing:.03em;text-transform:uppercase;line-height:1.25}
+.stat.c b{color:var(--green)} .stat.b b{color:var(--red)}
+/* custody-vs-bail ratio — colour + icon + words, never colour alone */
+.ratio{display:flex;flex-direction:column;gap:7px}
+.ratio-bar{display:flex;height:10px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.05);
+  border:1px solid var(--line)}
+.ratio-bar i{display:block;height:100%}
+.ratio-bar i.c{background:linear-gradient(90deg,var(--green-deep),var(--green))}
+.ratio-bar i.b{background:linear-gradient(90deg,var(--red),var(--red-deep))}
+.ratio-legend{display:flex;justify-content:space-between;gap:10px;font:700 10.5px/1 var(--font);letter-spacing:.07em}
+.ratio-legend span{display:inline-flex;align-items:center;gap:5px}
+.ratio-legend svg{width:12px;height:12px}
+.ratio-legend .lc{color:var(--green)} .ratio-legend .lb{color:var(--red)}
+.repeat-line{font:600 12.5px/1.45 var(--font);color:var(--paper-dim);text-align:center;
+  background:rgba(228,87,61,.07);border:1px solid rgba(228,87,61,.28);border-radius:10px;padding:9px 10px}
+.repeat-line b{color:var(--red);font-family:var(--mono);letter-spacing:.02em}
+
+/* form */
+form{display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font:600 13px/1 var(--font);color:var(--paper);letter-spacing:.01em}
+.field input{font:500 16px/1 var(--font);padding:13px;border-radius:11px;color:var(--paper);
+  background:rgba(10,14,24,.75);border:1px solid var(--card-brd);width:100%;min-height:46px}
+.field input::placeholder{color:#66788f}
+.field.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field.two .field{gap:6px}
+.err{color:#ff9d8a;font-size:12px;min-height:0}
+.field input[aria-invalid="true"]{border-color:var(--red)}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--paper-dim);line-height:1.4}
+.consent input{margin-top:2px;width:18px;height:18px;flex:0 0 auto;accent-color:var(--amber)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* leaderboard */
+.lb{width:100%;display:flex;flex-direction:column;gap:6px;max-height:44vh;overflow:auto}
+.lb-row{display:grid;grid-template-columns:32px 1fr auto;gap:10px;align-items:center;
+  padding:11px 12px;border-radius:11px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.lb-row .rank{font:800 14px/1 var(--mono);color:var(--paper-dim);text-align:center}
+.lb-row .who{font-weight:600;font-size:14px}
+.lb-row .who small{display:block;color:var(--paper-dim);font-weight:500;font-size:12px}
+.lb-row .sc{font:800 16px/1 var(--mono);color:var(--amber-lite)}
+.lb-row.me{background:rgba(242,169,59,.1);border-color:rgba(242,169,59,.45)}
+.lb-empty{color:var(--paper-dim);font-size:14px;text-align:center;padding:18px}
+
+/* footer / legal chrome */
+#footer{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  display:none;background:linear-gradient(0deg,rgba(5,8,14,.95),rgba(5,8,14,0));
+  font-size:10.5px;line-height:1.4;color:#6b7d95;text-align:center}
+#footer.show{display:block}
+#footer .auth{color:#8496b0;font-weight:600}
+.legal-block{font-size:11.5px;color:var(--paper-dim);line-height:1.5;background:rgba(0,0,0,.22);
+  border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+.legal-block strong{color:var(--paper)}
+.mini{font-size:12px;color:var(--paper-dim);text-align:center}
+
+/* loading — a street light bar sweeping blue/amber */
+#screen-loading{background:var(--ink)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:20px}
+.loader-bar-lights{display:flex;gap:5px}
+.loader-bar-lights i{display:block;width:16px;height:30px;border-radius:4px;background:var(--blue-deep);
+  animation:beat 1.05s ease-in-out infinite}
+.loader-bar-lights i:nth-child(2){animation-delay:.13s;background:var(--blue)}
+.loader-bar-lights i:nth-child(3){animation-delay:.26s;background:var(--amber-deep)}
+.loader-bar-lights i:nth-child(4){animation-delay:.39s;background:var(--amber)}
+@keyframes beat{0%,100%{opacity:.22;transform:scaleY(.72)}50%{opacity:1;transform:scaleY(1)}}
+.loader-bar{width:180px;height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.loader-bar i{display:block;height:100%;width:0;background:var(--amber);border-radius:999px;transition:width .2s linear}
+.loader-txt{font:600 12px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-dim)}
+
+@media (prefers-reduced-motion:reduce){
+  .screen.show{animation:none}
+  .loader-bar-lights i{animation:none;opacity:.8}
+}
+html[data-motion="off"] .screen.show{animation:none}
+html[data-motion="off"] .loader-bar-lights i{animation:none;opacity:.8}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="field">
+    <canvas id="game" aria-hidden="true"></canvas>
+
+    <!-- INTERNAL DRAFT watermark — every screen, every state. -->
+    <div id="draft" aria-hidden="true"><span>INTERNAL DRAFT — NOT FOR PUBLIC DISTRIBUTION</span></div>
+
+    <!-- Live region for screen-reader game state -->
+    <div id="live" class="sr-only" aria-live="polite" role="status"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-row">
+        <span class="level-pill" id="hud-level">The Beat</span>
+        <span class="streak-pill" id="hud-streak">CAUGHT &times;0</span>
+      </div>
+      <div class="hud-row">
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="meter-label">Business confidence</span>
+            <span class="meter-val" id="hud-conf">100<small>/100</small></span>
+          </div>
+          <div class="meter-bar"><div class="meter-fill" id="hud-fill"></div></div>
+          <span class="shop-pill" id="hud-shop" data-state="open"></span>
+        </div>
+      </div>
+      <div class="progress-line"><div class="progress-inner" id="hud-progress"></div></div>
+    </div>
+
+    <!-- Toggles -->
+    <div id="toggles">
+      <button class="toggle" id="t-sound" aria-pressed="false" title="Sound (off)" aria-label="Toggle sound"></button>
+      <button class="toggle" id="t-motion" aria-pressed="false" title="Reduce motion" aria-label="Toggle reduced motion"></button>
+      <button class="toggle" id="t-contrast" aria-pressed="false" title="High contrast" aria-label="Toggle high contrast"></button>
+      <button class="toggle" id="t-pause" title="Pause" aria-label="Pause game" style="display:none"></button>
+    </div>
+
+    <!-- LOADING -->
+    <section id="screen-loading" class="screen show" aria-label="Loading">
+      <div class="loader">
+        <div class="loader-bar-lights" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="loader-bar"><i id="load-bar"></i></div>
+        <div class="loader-txt">Walking the beat…</div>
+      </div>
+    </section>
+
+    <!-- TITLE -->
+    <section id="screen-title" class="screen" aria-label="Start screen">
+      <div class="card">
+        <span class="eyebrow">A community safety mini-game</span>
+        <h1 class="title">Catch and <span class="accent">Release</span></h1>
+        <div class="subtitle">Whack-a-Crook</div>
+        <p class="lead" id="framing-fact"></p>
+        <p id="framing-plan" style="font-size:13px"></p>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-play">Play — start your shift</button>
+          <button class="btn btn-ghost" id="btn-how">How to play</button>
+        </div>
+        <div class="controls-hint">
+          <span>Tap the figures. That's the whole game.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section id="screen-howto" class="screen" aria-label="How to play">
+      <div class="card">
+        <span class="eyebrow">How to play</span>
+        <h2>Tap them before they duck.</h2>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="chip tap" id="lg-tap"></div>
+            <div><strong>Figures pop up in nine street spots</strong><p>Tap one while it's up. Miss it and it's gone — confidence drops.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip bail" id="lg-bail"></div>
+            <div><strong>Most get bail — and come straight back</strong><p>The same case number resurfaces in a <em>different</em> spot. Confidence drops the moment they're back on the street, and only recovers when you get them again.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip cust" id="lg-cust"></div>
+            <div><strong>A few are remanded into custody</strong><p>Green padlock. That case stays down for the rest of the level.</p></div>
+          </div>
+        </div>
+        <div class="kbdmap">
+          <div class="kbdgrid" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i></div>
+          <p><strong style="color:var(--paper)">Keyboard works too.</strong> Keys <span class="key">1</span>–<span class="key">9</span> hit the matching spot. Or move with the arrow keys and hit with <span class="key">Space</span>. <span class="key">Esc</span> pauses.</p>
+        </div>
+        <button class="btn btn-primary" id="btn-how-start">Start the shift</button>
+      </div>
+    </section>
+
+    <!-- TRANSITION -->
+    <section id="screen-transition" class="screen" aria-label="Next level">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow" id="tr-eyebrow">Level 2</span>
+        <h2 id="tr-name">Repeat Offenders</h2>
+        <p id="tr-desc"></p>
+        <div class="result-score" style="margin:2px 0">
+          <span class="of">Business confidence still held</span>
+          <span class="big" id="tr-carry" style="font-size:clamp(30px,10vw,44px)">100</span>
+        </div>
+        <button class="btn btn-primary" id="btn-transition">Back on the beat</button>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="screen-pause" class="screen" aria-label="Paused">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow">Paused</span>
+        <h2>Shift on hold</h2>
+        <div class="btnset" style="max-width:280px">
+          <button class="btn btn-primary" id="btn-resume">Resume</button>
+          <button class="btn btn-ghost" id="btn-restart">Restart shift</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="screen-results" class="screen" aria-label="Results">
+      <div class="card">
+        <span class="eyebrow" id="res-eyebrow">Shift over</span>
+        <div class="result-score">
+          <span class="big" id="res-score">0</span>
+          <span class="of">of 100 business confidence held</span>
+        </div>
+        <p class="result-verdict" id="res-verdict"></p>
+        <div class="result-stats">
+          <div class="stat"><b id="res-whacks">0</b><span>Whacks</span></div>
+          <div class="stat c"><b id="res-custody">0</b><span>Custody</span></div>
+          <div class="stat b"><b id="res-bail">0</b><span>Bail granted</span></div>
+          <div class="stat"><b id="res-away">0</b><span>Got away</span></div>
+        </div>
+        <div class="ratio">
+          <div class="ratio-bar" id="res-ratio-bar"><i class="c" style="width:0%"></i><i class="b" style="width:0%"></i></div>
+          <div class="ratio-legend">
+            <span class="lc" id="res-lg-c"></span>
+            <span class="lb" id="res-lg-b"></span>
+          </div>
+        </div>
+        <div class="repeat-line" id="res-repeat"></div>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-leaderboard">Add my score to the board</button>
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy" href="#" target="_blank" rel="noopener">Our bail plan</a>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="btn-share">Share</button>
+            <button class="btn btn-ghost" id="btn-replay">Play again</button>
+          </div>
+        </div>
+        <div class="attributed" id="res-citation"></div>
+        <div class="attributed" id="res-citation-biz"></div>
+        <div class="legal-block" id="res-disclaimer"></div>
+      </div>
+    </section>
+
+    <!-- FORM -->
+    <section id="screen-form" class="screen" aria-label="Join the leaderboard">
+      <div class="card">
+        <span class="eyebrow">Add your score</span>
+        <h2>Join the board</h2>
+        <p style="font-size:13px">Your score will show as first name + postcode. <span id="form-privacy"></span></p>
+        <form id="lead-form" novalidate autocomplete="on">
+          <div class="field two">
+            <div class="field">
+              <label for="f-first">First name</label>
+              <input id="f-first" name="fname" autocomplete="given-name" maxlength="40" inputmode="text" />
+              <span class="err" id="e-first"></span>
+            </div>
+            <div class="field">
+              <label for="f-last">Last name</label>
+              <input id="f-last" name="lname" autocomplete="family-name" maxlength="40" />
+              <span class="err" id="e-last"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-email">Email</label>
+            <input id="f-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="120" />
+            <span class="err" id="e-email"></span>
+          </div>
+          <div class="field">
+            <label for="f-postcode">Postcode</label>
+            <input id="f-postcode" name="postcode" inputmode="numeric" maxlength="4" pattern="\d{4}" />
+            <span class="err" id="e-postcode"></span>
+          </div>
+          <!-- honeypot -->
+          <div class="hp" aria-hidden="true"><label>Website<input id="f-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <label class="consent">
+            <input type="checkbox" id="f-consent" />
+            <span id="consent-label"></span>
+          </label>
+          <span class="err" id="e-consent"></span>
+          <button class="btn btn-primary" type="submit" id="btn-submit">Submit &amp; see the board</button>
+          <button class="btn btn-ghost" type="button" id="btn-skip">Skip — just show the board</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="screen-leaderboard" class="screen" aria-label="Leaderboard">
+      <div class="card">
+        <span class="eyebrow">Leaderboard</span>
+        <h2>Who held the street</h2>
+        <div class="lb" id="lb-list"></div>
+        <p class="mini" id="lb-note"></p>
+        <div class="btnset">
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate2" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy2" href="#" target="_blank" rel="noopener">Our bail plan</a>
+          </div>
+          <button class="btn btn-ghost" id="btn-replay2">Play again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER: legal chrome -->
+    <footer id="footer">
+      <div class="auth" id="foot-auth"></div>
+      <div id="foot-disclaimer"></div>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+/* ============================================================================
+   1) CONTENT  —  SINGLE SOURCE OF TRUTH FOR EVERY FACTUAL CLAIM
+   --------------------------------------------------------------------------
+   >>> LEGAL / COMMS REVIEW HAPPENS HERE. <<<
+   Everything with any factual weight is in this one object. Nothing factual is
+   hardcoded anywhere else in this file. Figures ship as clearly-marked
+   placeholders until the policy team supplies signed-off, sourced wording.
+
+   Guardrails for this build (law-and-order subject matter — the failure mode is
+   encoding a stereotype into the sprite, or inventing a bail statistic):
+     - The offender figure is a FACELESS SILHOUETTE in one flat colour
+       (COL.silhouette). No face, no facial features, no hair, no skin tone, no
+       hoodie-thug shorthand, no ethnic or racial markers of any kind — ever.
+     - No weapons. No blood. No violence. No depiction of harm to a person.
+       Business impact only, and stylized (a roller shutter coming down).
+     - Offenders are identified ONLY by a neutral case-number chip and a generic
+       offence archetype from the list below. Never by appearance.
+     - Shopfronts carry GENERIC labels from the list below. No real, identifiable
+       individual, company, union, organisation, brand, or logo appears anywhere,
+       in visuals or in copy.
+     - Case numbers are fictional and randomly generated at runtime. They do not
+       refer to any real case, court file, or person.
+     - Every displayed figure shows its source in the same view.
+   ========================================================================== */
+const CONTENT = {
+  // Framing (title screen). Nothing here is asserted as fact by the party —
+  // the headline figure is a placeholder until it arrives sourced and signed off.
+  framingFact:
+    "[FIGURE PENDING LEGAL SIGN-OFF] — [FRAMING COPY PENDING] on the share of " +
+    "alleged offenders who are charged again while on bail. Catch one here and " +
+    "the same case number is back up somewhere else moments later.",
+  framingPlan:
+    "[POLICY HOOK PENDING] — the Liberal Party's plan for Victoria's bail laws.",
+
+  // Generic street SPOTS — the nine holes in the grid. Neutral, non-specific,
+  // no real location is named or implied.
+  spots: ["Alleyway","Shop doorway","Street corner","Laneway","Loading dock",
+          "Car park","Side street","Bus stop","Rear lane"],
+
+  // Generic SHOPFRONT labels for the background art. No real businesses.
+  shopfronts: ["Corner Store","Chemist","Bakery","Newsagent","Hardware",
+               "Cafe","Grocer","Barber","Bottle Shop","Laundromat"],
+
+  // Generic OFFENCE archetypes — neutral, non-lurid, property offences only.
+  // Used on the case chip / stamp subtitle. Never tied to a real case.
+  offences: ["Retail theft","Car theft","Burglary","Criminal damage",
+             "Theft from vehicle","Shop break-in"],
+
+  // Levels
+  levels: {
+    l1: { name:"The Beat",         desc:"A slow night. One spot at a time. Tap each figure before it ducks away." },
+    l2: { name:"Repeat Offenders", desc:"Faster now, and two spots can go at once. More of them make bail." },
+    l3: { name:"Closing Time",     desc:"Three at a time, barely a moment each — and almost every one walks straight back out." },
+    bonus:{ name:"Business as Usual", desc:"Every catch sticks. Nobody comes back. The shutters stay up. This is the level that doesn't exist." },
+  },
+
+  // Headline attributed statistic on the results screen (PRD open question 1).
+  // NOTHING here is asserted as the party's own finding.
+  citation: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",
+    framing: "…of people on bail went on to reoffend… (framing copy PENDING)",
+    source:  "[SOURCE PENDING]",
+    date:    "[DATE OF CITED SOURCE PENDING]",
+    signoff: "PENDING",
+  },
+
+  // Second attributed statistic — the business/insurance impact frame
+  // (PRD open question 2). Also blocking; also a placeholder.
+  citationBusiness: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",
+    framing: "…of the impact on small business — premiums, closures, or " +
+             "willingness to trade… (framing copy PENDING)",
+    source:  "[SOURCE PENDING]",
+    date:    "[DATE OF CITED SOURCE PENDING]",
+    signoff: "PENDING",
+  },
+
+  // Fiction disclaimer.
+  disclaimer:
+    "This game is a cartoon arcade game. It does not depict, name or refer to any " +
+    "real person, case, business or organisation. The figures are faceless " +
+    "silhouettes; all case numbers, offences and shopfronts are illustrative and " +
+    "fictional. Any statistics shown are attributed to their sources.",
+
+  // Electoral authorisation line — legally required for electoral matter.
+  authorisation: "Authorised by [NAME PENDING], [PARTY & ADDRESS PENDING].",
+
+  // Lead-capture collection statement (privacy).
+  privacy:
+    "We collect your details to contact you about this campaign. You can opt out " +
+    "any time. See our [collection statement — LINK PENDING].",
+  consentLabel:
+    "I agree to be contacted and to the collection statement above. [WORDING PENDING LEGAL SIGN-OFF]",
+
+  // CTAs — placeholder hrefs, clearly not live.
+  // UTM convention PENDING the campaign digital team; append to donateUrl at launch.
+  donateUrl: "#donate-url-pending",
+  policyUrl: "#bail-policy-url-pending",
+
+  // Share text (neutral).
+  shareText: (score) =>
+    `I held ${score}/100 business confidence in "Catch and Release — Whack-a-Crook". How many can you keep off the street?`,
+};
+
+/* --------------------------------------------------------------------------
+   INTERNAL DRAFT flag (P0). Set to false to remove the watermark banner
+   everywhere — no other edit needed, no layout shift.
+   -------------------------------------------------------------------------- */
+const INTERNAL_DRAFT = true;
+
+/* ============================================================================
+   2) THEME + SMALL HELPERS
+   ========================================================================== */
+const COL = {
+  ink:"#101623", ink2:"#161F30", paper:"#EDF2F7", dim:"#94A5BC",
+  amber:"#F2A93B", amberLite:"#FFD284", amberDeep:"#B87516",
+  blue:"#4C8FE8", blueLite:"#8FC0FF", blueDeep:"#1F4F8F",
+  green:"#4FD18B", greenDeep:"#1B7A4E",
+  red:"#E4573D", redDeep:"#8F2C1C",
+  silhouette:"#2A3448", silhouetteHC:"#4E6084",
+};
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const choice=a=>a[Math.floor(Math.random()*a.length)];
+const easeOutCubic=t=>1-Math.pow(1-t,3);
+const TAU=Math.PI*2;
+const $=id=>document.getElementById(id);
+function shuffled(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=randInt(0,i); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function getMono(){ return 'ui-monospace,"Cascadia Code",Menlo,Consolas,monospace'; }
+function getSans(){ return 'ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'; }
+const silhouetteCol=()=> settings.contrast ? COL.silhouetteHC : COL.silhouette;
+
+/* ============================================================================
+   3) PERSISTENT SETTINGS (sound / motion / contrast) — shared across the suite
+   ========================================================================== */
+const store = {
+  get(k,d){ try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d} },
+  set(k,v){ try{localStorage.setItem(k,JSON.stringify(v))}catch{} },
+};
+const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const settings = {
+  sound:    store.get("cr_sound", false),
+  motion:   store.get("cr_motion", prefersReducedMotion ? "off" : "on"),
+  contrast: store.get("cr_contrast", false),
+};
+const motionOn = () => settings.motion === "on";
+
+/* ============================================================================
+   4) AUDIO — WebAudio, muted by default, lazy-init on first gesture.
+   Every cue has a redundant visual, so sound-off loses no information.
+   ========================================================================== */
+const Sound = (()=>{
+  let ctx=null, master=null, ready=false;
+  function init(){
+    if(ready) return;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=.5; master.connect(ctx.destination); ready=true;
+    }catch{}
+  }
+  function tone(freq,dur,type="sine",vol=.3,slideTo=null){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime;
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1,slideTo),t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.006);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.02);
+  }
+  function noise(dur,vol=.2,hp=800){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const n=Math.floor(ctx.sampleRate*dur), buf=ctx.createBuffer(1,n,ctx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    const src=ctx.createBufferSource(); src.buffer=buf;
+    const f=ctx.createBiquadFilter(); f.type="highpass"; f.frequency.value=hp;
+    const g=ctx.createGain(); g.gain.value=vol;
+    src.connect(f); f.connect(g); g.connect(master); src.start();
+  }
+  return {
+    init,
+    pop(){ tone(560,.05,"sine",.05,760) },                                     // a figure surfaces
+    thunk(){ tone(140,.10,"square",.20,64); noise(.05,.10,1400) },             // the whack — low, meaty
+    whiff(){ tone(240,.05,"sine",.04,150) },                                   // tapped an empty spot
+    custody(){ [520,780,1040].forEach((f,i)=>setTimeout(()=>tone(f,.16,"sine",.13),i*58)) },
+    bail(){ tone(300,.30,"sawtooth",.17,90); setTimeout(()=>noise(.10,.14,300),40) },
+    escape(){ tone(300,.20,"triangle",.10,140) },
+    shutter(){ noise(.28,.13,220); tone(90,.22,"square",.08,50) },             // a shopfront degrades
+    level(){ tone(392,.12,"sine",.13,588); setTimeout(()=>tone(588,.18,"sine",.11),90) },
+    win(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.35,"sine",.13),i*90)) },
+    lose(){ tone(190,.55,"sine",.13,80) },
+  };
+})();
+
+/* ============================================================================
+   5) CANVAS + RESPONSIVE SCALER (DPR-aware)
+   --------------------------------------------------------------------------
+   All geometry is resolved live from W/H so it adapts from a 360px phone to the
+   560px desktop strip. DRAFT_H is the only layout constant the watermark
+   touches — it is 0 when INTERNAL_DRAFT is false.
+   ========================================================================== */
+const canvas=$("game"), ctx=canvas.getContext("2d");
+let W=0,H=0,DPR=1;
+function resize(){
+  W=Math.max(1,canvas.clientWidth); H=Math.max(1,canvas.clientHeight);
+  DPR=Math.min(window.devicePixelRatio||1, 2.5);
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+const DRAFT_H = INTERNAL_DRAFT ? 20 : 0;
+const HUD_H = 116;
+const COLS=3, ROWS=3, HOLES=COLS*ROWS;
+
+function shopBand(){ const y=DRAFT_H+HUD_H; return {x:0, y, w:W, h:clamp(H*0.20,116,190)}; }
+function gridRect(){
+  const b=shopBand(), y=b.y+b.h+8;
+  const padX=Math.max(12, W*0.035);
+  const bottom=H-58;                                  // kerb band
+  return {x:padX, y, w:W-padX*2, h:Math.max(150, bottom-y)};
+}
+function cellRect(i){
+  const g=gridRect();
+  const gapX=Math.max(7,g.w*0.028), gapY=Math.max(7,g.h*0.032);
+  const cw=(g.w-gapX*(COLS-1))/COLS, ch=(g.h-gapY*(ROWS-1))/ROWS;
+  const cx=i%COLS, cy=Math.floor(i/COLS);
+  return {x:g.x+cx*(cw+gapX), y:g.y+cy*(ch+gapY), w:cw, h:ch};
+}
+/* the recessed street opening inside a cell — the figure rises out of this */
+function doorRect(i){
+  const c=cellRect(i), plate=Math.min(18, c.h*0.15);
+  return {x:c.x, y:c.y, w:c.w, h:c.h-plate-3};
+}
+function hitTest(px,py){
+  for(let i=0;i<HOLES;i++){ const c=cellRect(i);
+    if(px>=c.x&&px<=c.x+c.w&&py>=c.y&&py<=c.y+c.h) return i; }
+  return -1;
+}
+
+/* ============================================================================
+   6) PARTICLES + FLOATING TEXT + STAMPS (pooled)
+   ========================================================================== */
+const particles=[]; const POOL_MAX=420;
+function spawnParticles(x,y,color,count,opts={}){
+  if(!motionOn()) count=Math.min(count,4);
+  for(let i=0;i<count;i++){
+    if(particles.length>=POOL_MAX) break;
+    const a=opts.angle!=null?opts.angle+rand(-.6,.6):rand(0,TAU);
+    const sp=rand(opts.spMin??40,opts.spMax??220);
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-(opts.lift||0),
+      life:rand(.4,.9),max:.9,size:rand(1.6,4.0),color,g:opts.g??150});
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.life-=dt; if(p.life<=0){particles.splice(i,1);continue}
+    p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.98;
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha=clamp(p.life/p.max,0,1); ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,TAU); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+const floaters=[];
+function spawnFloater(x,y,text,color,big){ floaters.push({x,y,text,color,life:1.15,max:1.15,big:!!big}); }
+function updateFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=32*dt; if(f.life<=0) floaters.splice(i,1); }
+}
+function drawFloaters(){
+  ctx.textAlign="center";
+  for(const f of floaters){
+    ctx.globalAlpha=clamp(f.life/f.max,0,1);
+    ctx.font=(f.big?"800 17px ":"800 12px ")+getMono();
+    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillText(f.text,f.x+1,f.y+1);
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ---- STAMPS — the emotional centre of the suite ---------------------------
+   A rubber stamp slams down over the spot: red BAIL GRANTED (with a revolving
+   arrow) or green CUSTODY (with a padlock). Always icon + word + colour.
+   -------------------------------------------------------------------------- */
+const stamps=[]; const STAMP_MAX=5;
+function spawnStamp(x,y,kind,text,sub){
+  if(stamps.length>=STAMP_MAX) stamps.shift();
+  const max = kind==="bail" ? 1.25 : 1.0;
+  stamps.push({x,y,kind,text,sub,life:max,max,rot:rand(-0.17,-0.05),scale:motionOn()?2.5:1});
+}
+function updateStamps(dt){
+  for(let i=stamps.length-1;i>=0;i--){
+    const s=stamps[i]; s.life-=dt;
+    const p=1-s.life/s.max;
+    s.scale = motionOn() ? (p<0.16 ? lerp(2.5,1,easeOutCubic(p/0.16)) : 1) : 1;
+    if(s.life<=0) stamps.splice(i,1);
+  }
+}
+function drawStamps(){
+  for(const s of stamps){
+    const col = s.kind==="bail" ? COL.red : COL.green;
+    const alpha = s.life<0.28 ? s.life/0.28 : 1;
+    ctx.save();
+    ctx.translate(s.x,s.y); ctx.rotate(s.rot); ctx.scale(s.scale,s.scale);
+    ctx.globalAlpha=alpha*0.96;
+    const base=Math.min(W*0.30, 120);
+    ctx.font=`900 ${Math.round(base*0.155)}px `+getSans();
+    const tw=ctx.measureText(s.text).width;
+    const padX=base*0.20, iconW=base*0.17;
+    const bw=tw+padX*2+iconW, bh=base*0.42;
+    // double-ruled stamp border
+    ctx.strokeStyle=col; ctx.lineWidth=Math.max(2.5,base*0.030);
+    roundRect(-bw/2,-bh/2,bw,bh,base*0.055); ctx.stroke();
+    ctx.lineWidth=Math.max(1,base*0.011);
+    roundRect(-bw/2+base*0.045,-bh/2+base*0.045,bw-base*0.09,bh-base*0.09,base*0.032); ctx.stroke();
+    // icon
+    ctx.save(); ctx.translate(-bw/2+padX*0.72, -base*0.045);
+    if(s.kind==="bail") stampArrow(iconW*0.55,col); else stampLock(iconW*0.5,col);
+    ctx.restore();
+    // word
+    ctx.fillStyle=col; ctx.textAlign="left"; ctx.textBaseline="middle";
+    ctx.fillText(s.text, -bw/2+padX*0.55+iconW, -base*0.04);
+    // subtitle — case number + generic offence archetype
+    if(s.sub){
+      ctx.font=`700 ${Math.round(base*0.075)}px `+getMono();
+      ctx.globalAlpha=alpha*0.8; ctx.textAlign="center";
+      ctx.fillText(s.sub, 0, bh/2-base*0.075);
+    }
+    ctx.textBaseline="alphabetic"; ctx.restore();
+  }
+  ctx.globalAlpha=1;
+}
+function stampArrow(r,col){          // revolving arrow — the BAIL GRANTED mark
+  ctx.strokeStyle=col; ctx.lineWidth=Math.max(1.8,r*0.30); ctx.lineCap="round";
+  ctx.beginPath(); ctx.arc(0,0,r,Math.PI*0.28,Math.PI*1.86); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(r*0.94,-r*0.62); ctx.lineTo(r*0.94,r*0.30); ctx.lineTo(r*0.05,r*0.30); ctx.stroke();
+}
+function stampLock(r,col){           // padlock — the CUSTODY mark
+  ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=Math.max(1.8,r*0.32); ctx.lineCap="round";
+  ctx.beginPath(); ctx.arc(0,-r*0.42,r*0.58,Math.PI,0); ctx.stroke();
+  roundRect(-r*0.92,-r*0.12,r*1.84,r*1.24,r*0.22); ctx.fill();
+}
+
+/* ============================================================================
+   7) LEVEL DATA — difficulty is a data table, provable from these numbers.
+   --------------------------------------------------------------------------
+   secs           : length of the shift in seconds. The level ends on this timer,
+                    or the instant confidence hits 0 ("Street Closed"), or once
+                    the case roster below is used up and the street is clear.
+   cases          : how many NEW case identities the level will introduce. Caps
+                    the workload: without it a fast player clears spots instantly,
+                    the spawner never throttles, and the bail loop multiplies the
+                    catch volume without bound.
+   upTime         : seconds a figure stays catchable once risen
+   gapMin/gapMax  : seconds between new figures being sent up
+   maxUp          : hard cap on simultaneous catchable figures. Resurfacing
+                    cases take priority inside this budget, so L1 really is
+                    "single hole at a time".
+   custodyBase    : probability the FIRST catch of a case is remanded into
+                    CUSTODY. Its inverse is the BAIL-GRANT WEIGHTING, and it
+                    rises measurably L1 -> L2 -> L3 (0.70 / 0.82 / 0.90).
+   custodyStep    : how much that probability improves with each prior. The
+                    system does hold them eventually — it just takes more
+                    catches each level. This also bounds a case's cycle.
+   bailDrain      : confidence lost the moment a bailed case RESURFACES
+   escapeDrain    : confidence lost when a figure ducks away un-caught
+   bailDelayMin/Max: seconds between a bail grant and the case resurfacing
+
+   Derived, and provable straight off these numbers (see the README):
+     expected concurrent figures = upTime / mean(gap), capped at maxUp
+       L1 1.30/1.30 = 1.00 -> 1   (single hole at a time)
+       L2 1.00/0.79 = 1.27 -> 2   (occasional double pop-ups)
+       L3 0.78/0.47 = 1.66 -> 3   (frequent multi pop-ups)
+     expected catches per case (from custodyBase/custodyStep)
+       L1 2.0    L2 2.7    L3 3.6    bonus 1.0
+   ========================================================================== */
+const LEVELS = [
+  { key:"l1", ...CONTENT.levels.l1, secs:28, cases:16, upTime:1.30, gapMin:1.10, gapMax:1.50,
+    maxUp:1, custodyBase:0.30, custodyStep:0.30, bailDrain:3, escapeDrain:2, bailDelayMin:0.85, bailDelayMax:1.35 },
+  { key:"l2", ...CONTENT.levels.l2, secs:30, cases:24, upTime:1.00, gapMin:0.62, gapMax:0.95,
+    maxUp:2, custodyBase:0.18, custodyStep:0.18, bailDrain:4, escapeDrain:2, bailDelayMin:0.70, bailDelayMax:1.10 },
+  { key:"l3", ...CONTENT.levels.l3, secs:32, cases:30, upTime:0.78, gapMin:0.34, gapMax:0.60,
+    maxUp:3, custodyBase:0.10, custodyStep:0.10, bailDrain:5, escapeDrain:3, bailDelayMin:0.50, bailDelayMax:0.90 },
+];
+const BONUS = { key:"bonus", ...CONTENT.levels.bonus, secs:22, cases:18, upTime:1.35, gapMin:0.85, gapMax:1.20,
+  maxUp:2, custodyBase:1.00, custodyStep:0, bailDrain:0, escapeDrain:2, bailDelayMin:0, bailDelayMax:0 };
+
+/* Scoring constants — see resolveOutcome(), the single scoring path.
+   custodyGain : the PRD's "ticks up slightly on a custody result". Deliberately
+                 a quarter-point: a run produces enough custody results that a
+                 whole point each would refill the meter faster than misses drain
+                 it, and every competent player would pin at 100. At 0.25 it is a
+                 real cushion (worth ~15 across a good run) that still cannot
+                 outrun sloppy play.
+   bonusCap    : total confidence the bonus level can hand back across the whole
+                 level. Small and capped so a clean finish feels good without the
+                 bonus ever rescuing a blown run. (A run that hits 0 never
+                 reaches the bonus at all — the street is already closed.) */
+const SCORE = { custodyGain:0.25, bonusCap:8 };
+
+/* Figure animation timings (seconds) */
+const WARN_T=0.18, RISE_T=0.14, DUCK_T=0.16, CAUGHT_T=0.20, RESURFACE_WARN_T=0.12;
+
+/* ---- Business Confidence -> shopfront degradation (P0) --------------------
+   At least 3 states required; four are defined. `min` is the inclusive
+   confidence floor for the state. Ordered high -> low.
+   -------------------------------------------------------------------------- */
+const SHOPFRONT_STATES = [
+  { key:"open",    min:75, label:"Open",              note:"Lights on, awning out, doors open." },
+  { key:"reduced", min:50, label:"Reduced hours",     note:"Half the lights off, awning in." },
+  { key:"half",    min:25, label:"Shutter half-down", note:"The roller shutter is coming down." },
+  { key:"closed",  min:0,  label:"Closed",            note:"Shutters down, windows boarded." },
+];
+
+/* ============================================================================
+   8) GAME STATE
+   ========================================================================== */
+/* A CASE is a persistent identity. The same case cycles through the grid via the
+   bail loop — that persistence is the entire message of the game. */
+const cases = new Map();
+let caseSeq = 0;
+const usedNos = new Set();
+/* The grid: nine fixed street spots. hole.fig is one APPEARANCE of a case. */
+const grid = Array.from({length:HOLES}, (_,i)=>({ idx:i, fig:null, whiff:0, custodyMark:0 }));
+
+const game = {
+  state:"loading",     // loading|title|howto|playing|bonus|transition|pause|results|form|leaderboard
+  levelIdx:0,
+  conf:100,            // BUSINESS CONFIDENCE = the score. 0-100, continuous across levels.
+  levelT:0, closing:false,
+  spawnT:0,
+  whacks:0, custody:0, bailGrants:0, escaped:0, introduced:0,
+  streak:0, bestStreak:0,
+  topPriors:0, topCase:null,       // the case that came back the most (snapshot)
+  bonusGain:0,
+  shopNames:[], shopIdx:0, shopShown:0, shopFlicker:0,
+  cursor:4, kbd:false,             // keyboard cell cursor (centre spot)
+  shake:0, hitstop:0, timeScale:1, flash:0, flashCol:COL.red, confetti:0,
+  streetClosed:false,
+  lastPlayerId:null, _pendingLevel:null, _resumeState:null, _forceRoll:null,
+};
+function levelDef(){ return LEVELS[game.levelIdx] || LEVELS[0]; }
+function activeDef(){ return game.state==="bonus" ? BONUS : levelDef(); }
+function caseOf(f){ return cases.get(f.caseId); }
+
+/* ---- Screen (DOM) management --------------------------------------------- */
+const SCREENS=["loading","title","howto","transition","pause","results","form","leaderboard"];
+function showScreen(name){ for(const s of SCREENS){ $("screen-"+s).classList.toggle("show", s===name); } }
+function hideAllScreens(){ for(const s of SCREENS) $("screen-"+s).classList.remove("show"); }
+function setHUD(on){ $("hud").classList.toggle("show", on); $("t-pause").style.display=on?"grid":"none"; }
+function setFooter(on){ $("footer").classList.toggle("show", on); }
+function say(msg){ $("live").textContent=msg; }
+
+/* ============================================================================
+   9) CASES / GRID / SPAWNER / SHOPFRONT STATE
+   ========================================================================== */
+function newCase(){
+  let no; do{ no=randInt(1000,9999); } while(usedNos.has(no));
+  usedNos.add(no);
+  const c={ id:++caseSeq, no, offence:choice(CONTENT.offences),
+            priors:0,          // times caught — this is what makes the cycle visible
+            debt:0,            // confidence currently owed because they are AT LARGE
+            custody:false, gone:false, pending:false, wait:0, lastHole:-1 };
+  cases.set(c.id,c); return c;
+}
+function makeFig(c, holeIdx, opts={}){
+  const L=activeDef();
+  return { caseId:c.id, hole:holeIdx, phase:"warn", t:0,
+           warnDur: opts.warnDur ?? WARN_T, upDur:L.upTime, bailed:!!opts.bailed };
+}
+const catchable = f => f && (f.phase==="rise" || f.phase==="up");
+function upCount(){ let n=0; for(const h of grid) if(h.fig && (h.fig.phase==="warn"||h.fig.phase==="rise"||h.fig.phase==="up")) n++; return n; }
+function anyFig(){ return grid.some(h=>h.fig); }
+function anyPending(){ for(const c of cases.values()) if(c.pending && !c.gone) return true; return false; }
+function freeHole(exclude){
+  const free=grid.filter(h=>!h.fig && h.idx!==exclude);
+  return free.length ? choice(free) : null;
+}
+function spawnNew(h){
+  const c=newCase();
+  h.fig=makeFig(c,h.idx); c.lastHole=h.idx; game.introduced++;
+}
+/* The bail loop: the case is back, in a DIFFERENT spot, with the stamp. */
+function resurface(c,h){
+  c.pending=false; c.lastHole=h.idx;
+  h.fig=makeFig(c,h.idx,{bailed:true, warnDur:RESURFACE_WARN_T});
+  resolveOutcome("resurface", h.fig);
+}
+function updateSpawner(dt){
+  const L=activeDef();
+  // 1) Resurfacing cases own the up-budget first — the bail loop always gets
+  //    the next free spot, so "they're back" lands promptly.
+  let pendingReady=false;
+  for(const c of cases.values()){
+    if(!c.pending || c.gone) continue;
+    c.wait-=dt;
+    if(c.wait<=0){
+      pendingReady=true;
+      if(upCount()<L.maxUp){ const h=freeHole(c.lastHole); if(h){ resurface(c,h); pendingReady=false; } }
+    }
+  }
+  // 2) New cases — never while a resurface is queued, never past the cap, never
+  //    past the level's roster, and never once the shift timer has run out.
+  if(!game.closing && !pendingReady && game.introduced<L.cases){
+    game.spawnT-=dt;
+    if(game.spawnT<=0){
+      if(upCount()<L.maxUp){ const h=freeHole(-1); if(h) spawnNew(h); }
+      game.spawnT=rand(L.gapMin,L.gapMax);
+    }
+  }
+}
+function shopStateIdx(){
+  const i=SHOPFRONT_STATES.findIndex(s=>game.conf>=s.min);
+  return i<0 ? SHOPFRONT_STATES.length-1 : i;
+}
+function syncShopState(){
+  const i=shopStateIdx();
+  if(i===game.shopIdx) return;
+  const worse=i>game.shopIdx;
+  game.shopIdx=i;
+  const st=SHOPFRONT_STATES[i];
+  $("hud-shop").dataset.state=st.key;
+  $("hud-shop").innerHTML=ICONS.shop+"<span>Shopfronts: "+esc(st.label)+"</span>";
+  if(worse){ Sound.shutter(); game.shopFlicker=0.5; }
+  say(`Shopfronts: ${st.label}. ${st.note}`);
+}
+
+/* ============================================================================
+   10) FLOW / STATE TRANSITIONS
+   ========================================================================== */
+function clearField(){
+  particles.length=0; floaters.length=0; stamps.length=0;
+  cases.clear(); usedNos.clear();
+  for(const h of grid){ h.fig=null; h.whiff=0; h.custodyMark=0; }
+}
+function goTitle(){
+  game.state="title"; hideAllScreens(); showScreen("title"); setHUD(false); setFooter(true);
+  clearField(); game.shopNames=shuffled(CONTENT.shopfronts).slice(0,3);
+}
+function goHowTo(){ game.state="howto"; showScreen("howto"); setFooter(false); }
+
+function startRun(){
+  game.conf=100; game.levelIdx=0; game.lastPlayerId=null;
+  game.whacks=0; game.custody=0; game.bailGrants=0; game.escaped=0;
+  game.streak=0; game.bestStreak=0; game.topPriors=0; game.topCase=null;
+  game.bonusGain=0; game.streetClosed=false; game.shopIdx=0; game.shopShown=0;
+  game.shopNames=shuffled(CONTENT.shopfronts).slice(0,3);
+  $("hud-shop").dataset.state="open";
+  $("hud-shop").innerHTML=ICONS.shop+"<span>Shopfronts: "+esc(SHOPFRONT_STATES[0].label)+"</span>";
+  beginLevel(0);
+}
+function beginLevel(idx){
+  resize();
+  game.levelIdx=idx; const L=LEVELS[idx];
+  clearField();
+  game.state="playing"; game.levelT=0; game.closing=false; game.timeScale=1;
+  game.spawnT=rand(0.35,0.6); game.cursor=4; game.introduced=0;
+  hideAllScreens(); setHUD(true); setFooter(false);
+  $("hud-level").textContent="L"+(idx+1)+" · "+L.name;
+  updateStreakHUD(); updateHUD();
+  say(`Level ${idx+1}. ${L.name}. ${L.desc}`);
+  Sound.level();
+}
+function beginBonus(){
+  resize();
+  clearField();
+  game.state="bonus"; game.levelT=0; game.closing=false; game.timeScale=1;
+  game.spawnT=rand(0.35,0.6); game.cursor=4; game.introduced=0;
+  hideAllScreens(); setHUD(true); setFooter(false);
+  $("hud-level").textContent="Bonus · "+BONUS.name;
+  updateStreakHUD(); updateHUD();
+  say(`Bonus level. ${BONUS.name}. ${BONUS.desc}`);
+  Sound.level();
+}
+function endLevel(){
+  const next=game.levelIdx+1;
+  if(next<LEVELS.length) showTransition(next); else beginBonus();
+}
+function showTransition(nextIdx){
+  game.state="transition"; setHUD(false); hideAllScreens(); showScreen("transition");
+  const L=LEVELS[nextIdx];
+  $("tr-eyebrow").textContent="Level "+(nextIdx+1);
+  $("tr-name").textContent=L.name; $("tr-desc").textContent=L.desc;
+  $("tr-carry").textContent=Math.round(game.conf);
+  game._pendingLevel=nextIdx;
+  say(`${L.name}. ${Math.round(game.conf)} of 100 business confidence still held.`);
+}
+/* The PRD's second end condition: the meter reaching zero. */
+function streetClosed(){
+  game.streetClosed=true; game.conf=0; updateHUD();
+  say("Street closed. Business confidence has hit zero.");
+  finish();
+}
+function finish(){
+  game.state="results"; setHUD(false); setFooter(true); hideAllScreens();
+  renderResults(); showScreen("results");
+  if(game.conf>=70 && !game.streetClosed){ Sound.win(); game.confetti=motionOn()?2.0:0; } else Sound.lose();
+}
+function pauseGame(){ if(game.state!=="playing"&&game.state!=="bonus")return; game._resumeState=game.state; game.state="pause"; setHUD(false); showScreen("pause"); }
+function resumeGame(){ if(game.state!=="pause")return; game.state=game._resumeState||"playing"; hideAllScreens(); setHUD(true); }
+
+/* ============================================================================
+   11) INPUT — mouse/tap is the primary verb. Keyboard is a full alternative
+   path (keys 1-9 hit a spot directly; arrows move a cursor, Space hits).
+   ========================================================================== */
+function tryWhack(i){
+  if(game.state!=="playing" && game.state!=="bonus") return false;
+  const h=grid[i]; if(!h) return false;
+  if(!catchable(h.fig)){ h.whiff=0.28; Sound.whiff(); return false; }
+  resolveOutcome("catch", h.fig);
+  return true;
+}
+function onDown(e){
+  Sound.init();
+  if(game.state!=="playing" && game.state!=="bonus") return;
+  const r=canvas.getBoundingClientRect();
+  const i=hitTest(e.clientX-r.left, e.clientY-r.top);
+  if(i>=0){ game.kbd=false; tryWhack(i); }
+  e.preventDefault();
+}
+canvas.addEventListener("pointerdown",onDown);
+canvas.addEventListener("touchstart",e=>{e.preventDefault();},{passive:false});
+
+window.addEventListener("keydown",e=>{
+  Sound.init();
+  const k=e.key, playing = game.state==="playing"||game.state==="bonus";
+  if(k==="Escape"){ if(playing) pauseGame(); else if(game.state==="pause") resumeGame(); return; }
+  if(k==="Enter" && game.state==="title"){ startRun(); return; }
+  if(k==="Enter" && game.state==="transition"){ $("btn-transition").click(); return; }
+  if(!playing) return;
+  if(k>="1" && k<="9"){ e.preventDefault(); game.kbd=true; game.cursor=+k-1; tryWhack(+k-1); return; }
+  if(k===" "||k==="Enter"){ e.preventDefault(); game.kbd=true; tryWhack(game.cursor); return; }
+  const col=game.cursor%COLS, row=Math.floor(game.cursor/COLS);
+  if(k==="ArrowLeft"){ e.preventDefault(); game.kbd=true; game.cursor=row*COLS+(col+COLS-1)%COLS; announceCursor(); }
+  else if(k==="ArrowRight"){ e.preventDefault(); game.kbd=true; game.cursor=row*COLS+(col+1)%COLS; announceCursor(); }
+  else if(k==="ArrowUp"){ e.preventDefault(); game.kbd=true; game.cursor=((row+ROWS-1)%ROWS)*COLS+col; announceCursor(); }
+  else if(k==="ArrowDown"){ e.preventDefault(); game.kbd=true; game.cursor=((row+1)%ROWS)*COLS+col; announceCursor(); }
+});
+function announceCursor(){ say(`Spot ${game.cursor+1}, ${CONTENT.spots[game.cursor]}.`); }
+
+/* ============================================================================
+   12) UPDATE
+   ========================================================================== */
+function update(dt){
+  const active = game.state==="playing"||game.state==="bonus";
+  updateParticles(dt); updateFloaters(dt); updateStamps(dt);
+  if(game.shake>0) game.shake=Math.max(0,game.shake-dt*3.2);
+  if(game.flash>0) game.flash=Math.max(0,game.flash-dt*2.4);
+  if(game.shopFlicker>0) game.shopFlicker=Math.max(0,game.shopFlicker-dt);
+  game.shopShown += (game.shopIdx-game.shopShown) * Math.min(1, dt*4.5);
+  if(game.confetti>0){ game.confetti-=dt;
+    if(motionOn()&&Math.random()<.5) spawnParticles(rand(0,W),-6,choice([COL.amber,COL.green,COL.blue]),1,{g:120,spMin:20,spMax:60,lift:-40}); }
+  for(const h of grid) if(h.whiff>0) h.whiff=Math.max(0,h.whiff-dt*3);
+  for(const h of grid) if(h.custodyMark>0) h.custodyMark=Math.max(0,h.custodyMark-dt);
+  if(!active) return;
+  updatePlay(dt);
+}
+function updatePlay(dt){
+  const L=activeDef();
+  game.levelT+=dt;
+  // The shift ends on the timer, or once the roster is used up — whichever
+  // lands first. Either way: no new arrivals, then clear what's still out.
+  if(!game.closing && (game.levelT>=L.secs || game.introduced>=L.cases)){
+    game.closing=true;
+    say("Shift over — clear the street.");
+  }
+  updateSpawner(dt);
+  updateFigures(dt);
+  updateHUD();
+  if(game.conf<=0) return streetClosed();
+  // The level closes out only once the street is clear, so no case is ever left
+  // at large with an unrecovered drain when the level boundary lands.
+  if(game.closing && !anyFig() && !anyPending() && game.conf>0){
+    if(game.state==="bonus") finish(); else endLevel();
+  }
+}
+function updateFigures(dt){
+  for(const h of grid){
+    const f=h.fig; if(!f) continue;
+    f.t+=dt;
+    switch(f.phase){
+      case "warn":   if(f.t>=f.warnDur){ f.phase="rise"; f.t=0; Sound.pop(); announcePop(f); } break;
+      case "rise":   if(f.t>=RISE_T){ f.phase="up"; f.t=0; } break;
+      case "up":     if(f.t>=f.upDur) resolveOutcome("escape", f); break;   // window closed
+      case "duck":   if(f.t>=DUCK_T) h.fig=null; break;
+      case "caught": if(f.t>=CAUGHT_T) h.fig=null; break;
+    }
+  }
+}
+function announcePop(f){
+  const c=caseOf(f);
+  say(`Case ${c.no}${f.bailed?" back on bail":""}, ${c.offence.toLowerCase()}, up at spot ${f.hole+1}, ${CONTENT.spots[f.hole]}.`);
+}
+function riseAmount(f){
+  switch(f.phase){
+    case "warn":   return 0;
+    case "rise":   return easeOutCubic(clamp(f.t/RISE_T,0,1));
+    case "up":     return 1;
+    case "duck":   return 1-easeOutCubic(clamp(f.t/DUCK_T,0,1));
+    case "caught": return 1-easeOutCubic(clamp(f.t/CAUGHT_T,0,1));
+  }
+  return 0;
+}
+/* The system decides, not the player — that is the point of the game. The only
+   thing that shifts the odds is the case's own record: each prior makes custody
+   a little more likely, so every case does resolve eventually. Call AFTER
+   c.priors has been incremented, so priors==1 on a first catch. */
+function custodyChanceFor(c){
+  const L=activeDef();
+  return clamp(L.custodyBase + (c.priors-1)*L.custodyStep, 0, 1);
+}
+function rollOutcome(c){
+  if(game.closing) return "custody";        // close-out: bounded, no new bail cycles
+  if(game._forceRoll) return game._forceRoll;
+  return Math.random() < custodyChanceFor(c) ? "custody" : "bail";
+}
+
+/* ---- Business Confidence: the ONE place the score ever moves --------------
+   The bonus level's give-back is capped here, in the scoring path, so nothing
+   can route around it. -------------------------------------------------- */
+function addConf(delta){
+  if(delta>0 && game.state==="bonus"){
+    const room=Math.max(0, SCORE.bonusCap-game.bonusGain);
+    delta=Math.min(delta, room); game.bonusGain+=delta;
+  }
+  game.conf=clamp(game.conf+delta, 0, 100);
+  syncShopState();
+}
+
+/* ---- THE SINGLE SCORING PATH ---------------------------------------------
+   Every outcome — player taps, windows timing out, and every debug pilot —
+   routes through here. Nothing else writes game.conf.
+
+     catch     : you got them. Refund what they cost while at large, then the
+                 system rolls custody or bail.
+     resurface : a bailed case is back on the street, in a different spot.
+                 Confidence drops NOW (PRD), and that drop is carried on the
+                 case as `debt` until you get them back.
+     escape    : a figure ducked away un-caught. Your miss, and the only
+                 permanent loss in the game. If they were at large, that
+                 temporary dip RESOLVES INTO this one — it does not stack on top
+                 of it. Being bailed is the system's doing and never costs the
+                 player twice; what costs you is letting someone get away.
+   -------------------------------------------------------------------------- */
+function resolveOutcome(kind, f){
+  const c=caseOf(f), L=activeDef(), cell=cellRect(f.hole);
+  const cx=cell.x+cell.w/2, cy=cell.y+cell.h*0.44;
+
+  if(kind==="catch"){
+    f.phase="caught"; f.t=0;
+    game.whacks++; game.streak++;
+    if(game.streak>game.bestStreak) game.bestStreak=game.streak;
+    c.priors++;
+    if(c.priors>game.topPriors){ game.topPriors=c.priors; game.topCase={no:c.no, offence:c.offence, priors:c.priors}; }
+    Sound.thunk();
+    if(motionOn()) game.hitstop=0.04;
+    spawnParticles(cx,cy,COL.blue, motionOn()?12:3,{spMin:40,spMax:170,lift:20});
+    // They're off the street again — give back exactly what their release cost.
+    if(c.debt>0){ const back=c.debt; c.debt=0; addConf(+back); spawnFloater(cx,cy-16,"+"+Math.round(back)+" BACK IN",COL.blueLite); }
+    // ...and now the system decides.
+    if(rollOutcome(c)==="custody"){
+      c.custody=true; c.gone=true; game.custody++;
+      addConf(+SCORE.custodyGain);
+      game.flash=.14; game.flashCol=COL.green;
+      spawnParticles(cx,cy,COL.green, motionOn()?14:4,{spMin:40,spMax:190,lift:30});
+      spawnStamp(cx,cy,"custody","CUSTODY","#"+c.no);
+      grid[f.hole].custodyMark=1.2;
+      Sound.custody();
+      say(`Caught case ${c.no}. Custody. Business confidence ${Math.round(game.conf)}.`);
+    } else {
+      c.pending=true; c.wait=rand(L.bailDelayMin,L.bailDelayMax);
+      game.bailGrants++;
+      spawnFloater(cx,cy-16,"#"+c.no+" — RELEASED",COL.dim);
+      say(`Caught case ${c.no}. Bail granted — they'll be back.`);
+    }
+    updateStreakHUD(); updateHUD(); return;
+  }
+
+  if(kind==="resurface"){
+    // >>> The beat this whole suite exists to deliver. <<<
+    const cut=L.bailDrain;
+    c.debt+=cut; addConf(-cut);
+    game.flash=.62; game.flashCol=COL.red;
+    if(motionOn()){ game.shake=Math.min(1,game.shake+.75); game.hitstop=0.06; }
+    game.shopFlicker=Math.max(game.shopFlicker,0.35);
+    spawnParticles(cx,cy,COL.red, motionOn()?16:4,{spMin:60,spMax:230});
+    spawnStamp(cx,cy,"bail","BAIL GRANTED","#"+c.no+" · "+c.offence.toUpperCase());
+    spawnFloater(cx,cell.y+12,"−"+Math.round(cut)+" AT LARGE","#FF9D8A");
+    Sound.bail();
+    say(`Bail granted. Case ${c.no}, ${c.offence.toLowerCase()}, back up at spot ${f.hole+1} — ` +
+        `caught ${c.priors} time${c.priors===1?"":"s"} already. Business confidence ${Math.round(game.conf)}.`);
+    updateHUD(); return;
+  }
+
+  if(kind==="escape"){
+    f.phase="duck"; f.t=0;
+    c.gone=true; c.pending=false;
+    game.escaped++; game.streak=0;
+    // Their at-large dip resolves here — it becomes the got-away cost below
+    // rather than stacking with it.
+    if(c.debt>0){ addConf(+c.debt); c.debt=0; }
+    const cut=Math.min(game.conf, L.escapeDrain);
+    addConf(-cut);
+    game.flash=.2; game.flashCol=COL.red;
+    if(motionOn()) game.shake=Math.min(1,game.shake+.28);
+    spawnFloater(cx,cy-8,"−"+Math.round(cut)+" GOT AWAY","#FF9D8A");
+    Sound.escape();
+    say(`Case ${c.no} got away. Business confidence ${Math.round(game.conf)}.`);
+    updateStreakHUD(); updateHUD(); return;
+  }
+}
+
+/* ---- HUD sync ------------------------------------------------------------- */
+function updateHUD(){
+  const v=Math.round(game.conf);
+  $("hud-conf").innerHTML=`${v}<small>/100</small>`;
+  const fill=$("hud-fill"); fill.style.width=game.conf+"%";
+  fill.classList.toggle("flash", game.conf<25);
+  const L=activeDef();
+  $("hud-progress").style.width=(clamp(game.levelT/L.secs,0,1)*100)+"%";
+}
+function updateStreakHUD(){
+  const el=$("hud-streak");
+  if(game.streak>=3){ el.textContent="CAUGHT ×"+game.streak; el.classList.add("show"); }
+  else el.classList.remove("show");
+}
+
+/* ============================================================================
+   13) RENDER
+   ========================================================================== */
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(game.shake>0 && motionOn()){ const s=game.shake*7; ctx.translate(rand(-s,s),rand(-s,s)); }
+  drawNight();
+  const showWorld=["title","playing","bonus","transition","pause"].includes(game.state);
+  if(showWorld){
+    drawShopfronts();
+    drawStreet();
+    for(let i=0;i<HOLES;i++) drawSpot(i);
+    if(game.kbd && (game.state==="playing"||game.state==="bonus")) drawCursor();
+  }
+  drawParticles(); drawFloaters(); drawStamps();
+  ctx.restore();
+  if(game.flash>0){
+    ctx.globalAlpha=game.flash*.5;
+    const g=ctx.createRadialGradient(W/2,H*.55,H*.08,W/2,H*.55,H*.75);
+    g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,game.flashCol);
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  }
+  drawVignette();
+}
+function drawNight(){
+  ctx.fillStyle=settings.contrast?"#05080F":COL.ink; ctx.fillRect(0,0,W,H);
+  // streetlight pool from the top of the street
+  const g=ctx.createRadialGradient(W*0.5,shopBand().y+shopBand().h,W*0.06, W*0.5,H*0.72,H*0.66);
+  g.addColorStop(0,"rgba(242,169,59,.10)"); g.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+
+/* ---- Shopfronts: the Business Confidence meter, made of buildings ---------
+   Four states, thresholds in SHOPFRONT_STATES. game.shopShown eases between
+   them so the change is felt, but the state itself is discrete and is also
+   printed in words in the HUD (colour is never the only signal).
+   -------------------------------------------------------------------------- */
+function drawShopfronts(){
+  const b=shopBand();
+  const t=game.shopShown;
+  // footpath under the shops
+  ctx.fillStyle=settings.contrast?"#0B1120":"#0C1220"; ctx.fillRect(0,b.y,W,b.h);
+  const gap=Math.max(3,W*0.012), w=(W-gap*4)/3;
+  for(let i=0;i<3;i++) drawShop(gap*(i+1)+w*i, b.y+6, w, b.h-14, game.shopNames[i]||"Corner Store", t, i);
+  // kerb line
+  ctx.fillStyle="rgba(148,165,188,.14)"; ctx.fillRect(0,b.y+b.h-3,W,2);
+}
+function drawShop(x,y,w,h,name,t,seed){
+  const st=SHOPFRONT_STATES[Math.round(clamp(t,0,3))];
+  // A flicker when a case is released — the lights stutter.
+  const flick = game.shopFlicker>0 && motionOn() ? (Math.sin(performance.now()/28+seed)*0.5+0.5)*0.55+0.45 : 1;
+  const lit     = clamp(1-t/3,0,1)*flick;                 // overall warmth
+  const awning  = clamp(1-t,0,1);                         // retracts at "reduced hours"
+  const shutter = clamp((t-1)/2,0,1);                     // 0 open/reduced, .5 half, 1 closed
+  const board   = clamp(t-2,0,1);                         // battens only when closed
+  const panes   = clamp(1-t/2,0,1);                       // 4 lit -> 2 lit -> 0
+
+  // facade
+  ctx.fillStyle=settings.contrast?"#141C2E":COL.ink2;
+  roundRect(x,y,w,h,4); ctx.fill();
+  ctx.strokeStyle="rgba(148,165,188,.13)"; ctx.lineWidth=1; ctx.stroke();
+
+  const fascia=Math.max(14,h*0.24);
+  // fascia sign — a GENERIC label only
+  ctx.fillStyle=settings.contrast?"#0A0F1C":"#0E1524";
+  roundRect(x+2,y+2,w-4,fascia,3); ctx.fill();
+  ctx.fillStyle=`rgba(255,210,132,${0.28+0.62*lit})`;
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.font=`700 ${Math.max(7,Math.min(10,w*0.085))}px `+getSans();
+  ctx.fillText(name.toUpperCase(), x+w/2, y+2+fascia/2);
+
+  // window opening
+  const wx=x+w*0.09, wy=y+fascia+6, ww=w*0.82, wh=h-fascia-14;
+  ctx.fillStyle="#070B14"; roundRect(wx,wy,ww,wh,3); ctx.fill();
+  // warm interior
+  if(lit>0.02){
+    const g=ctx.createLinearGradient(0,wy,0,wy+wh);
+    g.addColorStop(0,`rgba(255,210,132,${0.42*lit})`); g.addColorStop(1,`rgba(242,169,59,${0.10*lit})`);
+    ctx.fillStyle=g; roundRect(wx,wy,ww,wh,3); ctx.fill();
+  }
+  // lit panes (4 -> 2 -> 0)
+  const nLit=Math.round(panes*4);
+  for(let p=0;p<4;p++){
+    const px=wx+ww*0.08+p*(ww*0.215), py=wy+wh*0.16, pw=ww*0.17, ph=wh*0.34;
+    ctx.fillStyle = p<nLit ? `rgba(255,226,168,${0.55*flick})` : "rgba(148,165,188,.08)";
+    roundRect(px,py,pw,ph,2); ctx.fill();
+  }
+  // awning — out when open, gone from "reduced hours"
+  if(awning>0.02){
+    const ah=Math.max(5,h*0.11)*awning;
+    ctx.save(); ctx.globalAlpha=awning;
+    for(let s=0;s<5;s++){
+      ctx.fillStyle = s%2 ? "rgba(242,169,59,.75)" : "rgba(237,242,247,.62)";
+      ctx.fillRect(x+w*0.06+s*(w*0.176), y+fascia+3, w*0.176, ah);
+    }
+    ctx.fillStyle="rgba(0,0,0,.28)"; ctx.fillRect(x+w*0.06, y+fascia+3+ah-1.5, w*0.88, 1.5);
+    ctx.restore();
+  }
+  // roller shutter — corrugated slats, coming down. It also dims as it closes,
+  // so the four states read as progressively deader and not just "more shutter".
+  if(shutter>0.01){
+    const sh=wh*shutter;
+    ctx.fillStyle = settings.contrast
+      ? (shutter>0.75?"#1B2438":"#243049")
+      : (shutter>0.75?"#121926":"#1B2438");
+    roundRect(wx,wy,ww,sh,2); ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.42)"; ctx.lineWidth=1;
+    for(let sy=wy+3; sy<wy+sh-1; sy+=4){ ctx.beginPath(); ctx.moveTo(wx+1,sy); ctx.lineTo(wx+ww-1,sy); ctx.stroke(); }
+    ctx.fillStyle="rgba(148,165,188,.32)"; ctx.fillRect(wx,wy+sh-2,ww,2);   // the bottom rail
+  }
+  // boards — only at "closed"
+  if(board>0.02){
+    ctx.save(); ctx.globalAlpha=board; ctx.fillStyle="rgba(120,96,64,.85)";
+    ctx.translate(wx+ww/2, wy+wh*0.68);
+    ctx.rotate(0.10); ctx.fillRect(-ww*0.56,-3,ww*1.12,5.5);
+    ctx.rotate(-0.22); ctx.fillRect(-ww*0.56,-3,ww*1.12,5.5);
+    ctx.restore();
+  }
+  // status plate — words + colour, on the shop itself
+  const plateCol = st.key==="open"?COL.green : st.key==="closed"?COL.red : COL.amber;
+  const pw2=w*0.76, ph2=Math.max(9,h*0.115), px2=x+(w-pw2)/2, py2=y+h-ph2-3;
+  ctx.fillStyle="rgba(7,11,20,.92)"; roundRect(px2,py2,pw2,ph2,2); ctx.fill();
+  ctx.strokeStyle=plateCol; ctx.lineWidth=1; roundRect(px2,py2,pw2,ph2,2); ctx.stroke();
+  ctx.fillStyle=plateCol;
+  ctx.font=`800 ${Math.max(5.5,Math.min(7.5,w*0.062))}px `+getSans();
+  ctx.fillText(st.label.toUpperCase(), x+w/2, py2+ph2/2+0.5);
+  ctx.textBaseline="alphabetic";
+}
+
+function drawStreet(){
+  const g=gridRect();
+  // road surface behind the spots
+  ctx.fillStyle=settings.contrast?"#080C16":"#0B0F1A";
+  roundRect(g.x-6,g.y-6,g.w+12,g.h+12,14); ctx.fill();
+  ctx.strokeStyle="rgba(148,165,188,.10)"; ctx.lineWidth=1; ctx.stroke();
+}
+
+/* ---- A street spot: a recessed opening + the faceless figure -------------- */
+function drawSpot(i){
+  const h=grid[i], c=cellRect(i), d=doorRect(i);
+  const f=h.fig;
+  const warning = f && f.phase==="warn";
+
+  // recess
+  ctx.fillStyle=settings.contrast?"#01030A":"#070A12";
+  roundRect(d.x,d.y,d.w,d.h,9); ctx.fill();
+  // inner shading
+  const ig=ctx.createLinearGradient(0,d.y,0,d.y+d.h);
+  ig.addColorStop(0,"rgba(0,0,0,.55)"); ig.addColorStop(1,"rgba(76,143,232,.05)");
+  ctx.fillStyle=ig; roundRect(d.x,d.y,d.w,d.h,9); ctx.fill();
+
+  // the figure, clipped inside the opening
+  if(f){
+    ctx.save(); roundRect(d.x,d.y,d.w,d.h,9); ctx.clip();
+    drawFigureIn(d, f);
+    ctx.restore();
+  }
+
+  // rim — telegraph pulse before a pop, whiff flash on an empty tap
+  let rim="rgba(148,165,188,.20)", rw=1.5;
+  if(warning && motionOn()){ rim="rgba(242,169,59,"+(0.35+0.4*Math.sin(performance.now()/45))+")"; rw=2.4; }
+  else if(warning){ rim="rgba(242,169,59,.6)"; rw=2.4; }
+  if(h.whiff>0){ rim="rgba(148,165,188,"+(0.2+h.whiff)+")"; rw=2; }
+  ctx.strokeStyle=rim; ctx.lineWidth=rw; roundRect(d.x,d.y,d.w,d.h,9); ctx.stroke();
+  // sill
+  ctx.fillStyle="rgba(148,165,188,.22)"; ctx.fillRect(d.x+3,d.y+d.h-2,d.w-6,2);
+
+  // a lingering padlock where a case went into custody
+  if(h.custodyMark>0){
+    ctx.save(); ctx.globalAlpha=Math.min(1,h.custodyMark)*0.55;
+    ctx.translate(d.x+d.w/2, d.y+d.h*0.5);
+    stampLock(Math.min(d.w,d.h)*0.11, COL.green);
+    ctx.restore();
+  }
+
+  // spot plate: the number key + the generic street-spot label
+  const py=c.y+c.h-Math.min(18,c.h*0.15)-1, ph=Math.min(16,c.h*0.13);
+  ctx.textAlign="left"; ctx.textBaseline="middle";
+  ctx.fillStyle="rgba(148,165,188,.55)";
+  ctx.font=`700 ${Math.max(7,Math.min(9,c.w*0.085))}px `+getMono();
+  ctx.fillText(String(i+1), c.x+3, py+ph/2);
+  ctx.fillStyle="rgba(148,165,188,.42)";
+  ctx.font=`600 ${Math.max(6.5,Math.min(8.5,c.w*0.078))}px `+getSans();
+  ctx.fillText(CONTENT.spots[i].toUpperCase(), c.x+12, py+ph/2);
+  ctx.textBaseline="alphabetic";
+}
+
+/* ---- The offender figure --------------------------------------------------
+   A FACELESS SILHOUETTE. One flat colour. A plain head, sloped shoulders, a
+   torso. No face, no features, no hair, no hood, no skin tone, no markers of
+   any kind, and nothing in their hands. They are told apart ONLY by the case
+   chip above them. Do not add anything to this function.
+   -------------------------------------------------------------------------- */
+function drawFigureIn(d, f){
+  const up=riseAmount(f); if(up<=0.001) return;
+  const c=caseOf(f);
+  const S=Math.min(d.w/78, d.h/96);
+  const hidden=d.y+d.h+10*S, shown=d.y+d.h*0.30;
+  const baseY=lerp(hidden, shown+64*S, up);          // feet-line of the figure
+  const x=d.x+d.w/2;
+
+  ctx.save();
+  // squash on the way down when caught
+  if(f.phase==="caught" && motionOn()){
+    const k=1+0.16*(1-up); ctx.translate(x,baseY); ctx.scale(k,1/k); ctx.translate(-x,-baseY);
+  }
+  ctx.fillStyle=silhouetteCol();
+  const tw=52*S, th=46*S, ty=baseY-th;
+  ctx.beginPath();
+  ctx.moveTo(x-tw/2, baseY);
+  ctx.lineTo(x-tw/2, ty+11*S);
+  ctx.quadraticCurveTo(x-tw/2+1*S, ty+1*S, x-tw*0.24, ty-1*S);
+  ctx.lineTo(x+tw*0.24, ty-1*S);
+  ctx.quadraticCurveTo(x+tw/2-1*S, ty+1*S, x+tw/2, ty+11*S);
+  ctx.lineTo(x+tw/2, baseY);
+  ctx.closePath(); ctx.fill();
+  const hr=tw*0.29, hy=ty-1*S-hr*0.92;
+  ctx.fillRect(x-hr*0.40, hy, hr*0.80, hr*1.3);       // neck
+  ctx.beginPath(); ctx.arc(x,hy,hr,0,TAU); ctx.fill(); // head — nothing on it, ever
+  // a single rim light for depth (lighting, not a feature)
+  ctx.strokeStyle="rgba(255,255,255,.10)"; ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.arc(x-hr*0.28,hy-hr*0.18,hr*0.86,Math.PI*0.92,Math.PI*1.48); ctx.stroke();
+  ctx.restore();
+
+  // CASE CHIP — the only identifier. Red + revolving arrow when they are back
+  // on bail, so a resurfacing is never signalled by colour alone.
+  const chipY=d.y+4, alpha=clamp((up-0.25)/0.4,0,1);
+  if(alpha<=0.01) return;
+  const label="#"+c.no+(c.priors>0?"  ×"+(c.priors+1):"");
+  ctx.save(); ctx.globalAlpha=alpha;
+  ctx.font=`700 ${Math.max(7.5,Math.min(9.5,d.w*0.085))}px `+getMono();
+  const icoW=f.bailed?10:0;
+  const tw2=ctx.measureText(label).width, cw=tw2+14+icoW, ch=Math.max(13,d.w*0.125), cx0=d.x+d.w/2-cw/2;
+  ctx.fillStyle=f.bailed?"rgba(143,44,28,.94)":"rgba(10,14,24,.92)";
+  roundRect(cx0,chipY,cw,ch,ch/2); ctx.fill();
+  ctx.strokeStyle=f.bailed?COL.red:"rgba(148,165,188,.4)"; ctx.lineWidth=1;
+  roundRect(cx0,chipY,cw,ch,ch/2); ctx.stroke();
+  if(f.bailed){ ctx.save(); ctx.translate(cx0+9,chipY+ch/2); stampArrow(3.4,COL.red); ctx.restore(); }
+  ctx.fillStyle=f.bailed?"#FFC9BC":COL.dim;
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(label, cx0+cw/2+icoW*0.4, chipY+ch/2+0.5);
+  ctx.textBaseline="alphabetic"; ctx.restore();
+}
+
+function drawCursor(){
+  const c=cellRect(game.cursor);
+  ctx.save();
+  ctx.strokeStyle=COL.blueLite; ctx.lineWidth=2.5;
+  if(motionOn()){ ctx.shadowColor="rgba(143,192,255,.7)"; ctx.shadowBlur=10; }
+  roundRect(c.x-2,c.y-2,c.w+4,c.h+4,11); ctx.stroke();
+  ctx.restore();
+}
+function drawVignette(){
+  const g=ctx.createRadialGradient(W/2,H/2,H*.36,W/2,H/2,H*.84);
+  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,.45)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+function roundRect(x,y,w,h,r){ w=Math.max(0,w); h=Math.max(0,h); r=Math.max(0,Math.min(r,w/2,h/2));
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+/* ============================================================================
+   14) MAIN LOOP (fixed timestep)
+   ========================================================================== */
+new ResizeObserver(resize).observe($("field"));
+window.addEventListener("resize",resize);
+resize();
+
+let last=performance.now(), acc=0; const STEP=1/60;
+function frame(t){
+  if(canvas.clientWidth!==W||canvas.clientHeight!==H) resize();
+  let dt=(t-last)/1000; last=t; if(dt>0.1)dt=0.1;
+  if(game.hitstop>0){ game.hitstop-=dt; }
+  else { acc+=dt*game.timeScale; let n=0; while(acc>=STEP && n<5){ update(STEP); acc-=STEP; n++; } if(acc>STEP*5)acc=0; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================================
+   15) RESULTS + LEADERBOARD RENDERING
+   ========================================================================== */
+function verdictFor(score){
+  if(score>=90) return "You held the street. You just had to catch everyone twice.";
+  if(score>=70) return "Held more than you lost — but the same names kept coming back.";
+  if(score>=45) return "You caught plenty. It didn't make much difference.";
+  if(score>0)   return "You couldn't whack them faster than they were let out.";
+  return "Street closed. The shutters are down and they're still out there.";
+}
+function renderResults(){
+  const score=Math.round(game.conf);
+  const el=$("res-score"); const dur=motionOn()?700:0, t0=performance.now();
+  (function tick(now){
+    const p=dur?clamp((now-t0)/dur,0,1):1;
+    el.textContent=Math.round(easeOutCubic(p)*score);
+    if(p<1) requestAnimationFrame(tick);
+  })(t0);
+  $("res-eyebrow").textContent = game.streetClosed ? "Street closed" : "Shift over";
+  $("res-verdict").textContent=verdictFor(score);
+  $("res-whacks").textContent=game.whacks;
+  $("res-custody").textContent=game.custody;
+  $("res-bail").textContent=game.bailGrants;
+  $("res-away").textContent=game.escaped;
+
+  // custody-vs-bail ratio — bar + icons + words
+  const tot=game.custody+game.bailGrants;
+  const cp = tot ? (game.custody/tot*100) : 0;
+  const bar=$("res-ratio-bar");
+  bar.children[0].style.width=cp+"%"; bar.children[1].style.width=(tot?100-cp:0)+"%";
+  $("res-lg-c").innerHTML=ICONS.lock+"<span>CUSTODY "+game.custody+"</span>";
+  $("res-lg-b").innerHTML=ICONS.revolve+"<span>BAIL GRANTED "+game.bailGrants+"</span>";
+
+  $("res-repeat").innerHTML = game.topCase && game.topCase.priors>1
+    ? `Most persistent case: <b>#${game.topCase.no}</b> — ${esc(game.topCase.offence.toLowerCase())}, caught <b>${game.topCase.priors}</b> times.`
+    : `Custody vs bail granted — <b>${game.custody} : ${game.bailGrants}</b>. No case was caught more than once.`;
+
+  const c=CONTENT.citation, cb=CONTENT.citationBusiness;
+  $("res-citation").innerHTML =
+    `<span class="tag">Reoffending on bail</span>`+
+    `<span class="pending">${esc(c.figure)}</span> ${esc(c.framing)}`+
+    `<span class="src">Source: ${esc(c.source)} · ${esc(c.date)}</span>`;
+  $("res-citation-biz").innerHTML =
+    `<span class="tag">Impact on business</span>`+
+    `<span class="pending">${esc(cb.figure)}</span> ${esc(cb.framing)}`+
+    `<span class="src">Source: ${esc(cb.source)} · ${esc(cb.date)}</span>`;
+  $("res-disclaimer").innerHTML="<strong>Disclaimer.</strong> "+esc(CONTENT.disclaimer);
+
+  say(`${game.streetClosed?"Street closed.":"Shift over."} ${score} of 100 business confidence held. `+
+      `${game.whacks} whacks: ${game.custody} into custody, ${game.bailGrants} bail grants, ${game.escaped} got away.`);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---- Leaderboard store: LOCAL now, REMOTE (Cloudflare) later --------------
+   Swap point for launch: implement RemoteLeaderboard against a serverless
+   endpoint (Cloudflare Pages Function + D1) and flip USE_REMOTE. PII stays
+   server-side there; this local store keeps data on-device only (demo/fallback).
+   The public row is first name + postcode + score ONLY — last name and email are
+   private `_`-prefixed fields and never surface in the board.
+   -------------------------------------------------------------------------- */
+const USE_REMOTE=false;
+const LocalLeaderboard={
+  KEY:"cr_whack_lb_v1",
+  all(){ return store.get(this.KEY,[]) || []; },
+  async top(n=10){ return this.all().slice(0,n); },
+  async submit(entry){
+    const list=this.all();
+    const rec={ id:(performance.now()+"_"+Math.random()).toString(),
+      first:entry.first, postcode:entry.postcode, score:entry.score, ts:Date.now(),
+      _last:entry.last, _email:entry.email };     // private fields — on-device only here
+    list.push(rec); list.sort((a,b)=>b.score-a.score);
+    const rank=list.findIndex(r=>r.id===rec.id)+1;
+    store.set(this.KEY, list.slice(0,100));
+    return { rank, id:rec.id, total:list.length };
+  },
+};
+const Leaderboard = USE_REMOTE ? null /* RemoteLeaderboard (launch) */ : LocalLeaderboard;
+
+async function renderLeaderboard(){
+  const rows=await Leaderboard.top(10);
+  const list=$("lb-list"); list.innerHTML="";
+  if(!rows.length){ list.innerHTML='<div class="lb-empty">No scores yet — you could be first.</div>'; }
+  rows.forEach((r,i)=>{
+    const div=document.createElement("div");
+    div.className="lb-row"+(r.id===game.lastPlayerId?" me":"");
+    div.innerHTML=`<span class="rank">${i+1}</span>`+
+      `<span class="who">${esc(r.first||"Player")}<small>Postcode ${esc(r.postcode||"—")}</small></span>`+
+      `<span class="sc">${Math.round(r.score)}</span>`;
+    list.appendChild(div);
+  });
+  $("lb-note").textContent = USE_REMOTE ? "" :
+    "Scores are saved on this device (demo mode). A shared board is enabled at launch.";
+}
+
+/* ============================================================================
+   16) UI WIRING
+   ========================================================================== */
+const ICONS={
+  soundOn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"/></svg>',
+  soundOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 5m0-5-5 5"/></svg>',
+  motion:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+  contrast:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>',
+  revolve:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.6"/><path d="M20 5v6h-6"/></svg>',
+  shop:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16l1.4 4.2A3 3 0 0 1 18.6 12H18v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-7h-.6A3 3 0 0 1 2.6 8.2z"/></svg>',
+};
+$("framing-fact").textContent=CONTENT.framingFact;
+$("framing-plan").textContent=CONTENT.framingPlan;
+$("foot-auth").textContent=CONTENT.authorisation;
+$("foot-disclaimer").textContent=CONTENT.disclaimer;
+$("form-privacy").textContent=CONTENT.privacy;
+$("consent-label").textContent=CONTENT.consentLabel;
+$("btn-donate").href=CONTENT.donateUrl; $("btn-donate2").href=CONTENT.donateUrl;
+$("btn-policy").href=CONTENT.policyUrl; $("btn-policy2").href=CONTENT.policyUrl;
+$("hud-shop").innerHTML=ICONS.shop+"<span>Shopfronts: "+esc(SHOPFRONT_STATES[0].label)+"</span>";
+
+// how-to legend icons
+$("lg-tap").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V5a2 2 0 0 1 4 0v6"/><path d="M12 11V4a2 2 0 0 1 4 0v7"/><path d="M16 11a2 2 0 0 1 4 0v4a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-3l-2.5-4a2 2 0 0 1 3.4-2L8 13"/></svg>';
+$("lg-bail").innerHTML=ICONS.revolve;
+$("lg-cust").innerHTML=ICONS.lock;
+
+$("btn-play").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-how").onclick=goHowTo;
+$("btn-how-start").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-transition").onclick=()=>{ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); };
+$("btn-resume").onclick=resumeGame;
+$("btn-restart").onclick=()=>{ hideAllScreens(); startRun(); };
+$("t-pause").onclick=()=>{ game.state==="pause"?resumeGame():pauseGame(); };
+$("btn-replay").onclick=startRun;
+$("btn-replay2").onclick=startRun;
+$("btn-leaderboard").onclick=()=>{ game.state="form"; hideAllScreens(); showScreen("form"); setFooter(false); $("f-first").focus(); };
+$("btn-skip").onclick=async()=>{ game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true); };
+
+$("btn-share").onclick=async()=>{
+  const score=Math.round(game.conf), text=CONTENT.shareText(score);
+  const url=location.href.split("#")[0];
+  try{
+    if(navigator.share) await navigator.share({title:"Catch and Release — Whack-a-Crook",text,url});
+    else { await navigator.clipboard.writeText(text+" "+url); toast("Link copied"); }
+  }catch{}
+};
+
+$("lead-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const first=$("f-first").value.trim(), last=$("f-last").value.trim(),
+        email=$("f-email").value.trim(), postcode=$("f-postcode").value.trim(),
+        consent=$("f-consent").checked, hp=$("f-website").value;
+  let ok=true;
+  const setErr=(id,inp,msg)=>{ $(id).textContent=msg||""; if(inp) $(inp).setAttribute("aria-invalid", msg?"true":"false"); if(msg)ok=false; };
+  setErr("e-first","f-first", first?"":"Enter your first name");
+  setErr("e-last","f-last", last?"":"Enter your last name");
+  setErr("e-email","f-email", /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?"":"Enter a valid email");
+  setErr("e-postcode","f-postcode", /^\d{4}$/.test(postcode)?"":"Enter a 4-digit postcode");
+  setErr("e-consent",null, consent?"":"Please tick to continue");
+  if(hp) return;                                  // honeypot
+  if(!ok) return;
+  const res=await Leaderboard.submit({first,last,email,postcode,score:Math.round(game.conf)});
+  game.lastPlayerId=res.id;
+  game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true);
+  say(`You ranked number ${res.rank} of ${res.total}.`);
+});
+
+function toast(msg){
+  const t=document.createElement("div"); t.textContent=msg;
+  t.style.cssText="position:absolute;left:50%;bottom:80px;transform:translateX(-50%);z-index:20;"+
+    "background:rgba(10,14,24,.95);border:1px solid var(--card-brd);color:var(--paper);"+
+    "padding:10px 16px;border-radius:10px;font:600 13px var(--font)";
+  $("field").appendChild(t); setTimeout(()=>t.remove(),1600);
+}
+
+/* ---- Toggles -------------------------------------------------------------- */
+function applyToggles(){
+  document.documentElement.setAttribute("data-motion", settings.motion);
+  document.documentElement.setAttribute("data-contrast", settings.contrast?"on":"off");
+  const s=$("t-sound"); s.innerHTML=settings.sound?ICONS.soundOn:ICONS.soundOff;
+  s.setAttribute("aria-pressed",settings.sound); s.title="Sound ("+(settings.sound?"on":"off")+")";
+  const m=$("t-motion"); m.innerHTML=ICONS.motion; m.setAttribute("aria-pressed", settings.motion==="off");
+  m.title=(motionOn()?"Reduce motion":"Motion reduced");
+  const c=$("t-contrast"); c.innerHTML=ICONS.contrast; c.setAttribute("aria-pressed",settings.contrast);
+  c.title="High contrast ("+(settings.contrast?"on":"off")+")";
+  $("t-pause").innerHTML=ICONS.pause;
+}
+$("t-sound").onclick=()=>{ settings.sound=!settings.sound; store.set("cr_sound",settings.sound); if(settings.sound){Sound.init();Sound.pop();} applyToggles(); };
+$("t-motion").onclick=()=>{ settings.motion=motionOn()?"off":"on"; store.set("cr_motion",settings.motion); applyToggles(); };
+$("t-contrast").onclick=()=>{ settings.contrast=!settings.contrast; store.set("cr_contrast",settings.contrast); applyToggles(); };
+applyToggles();
+
+/* ---- INTERNAL DRAFT banner: the single flag, applied ---------------------- */
+if(!INTERNAL_DRAFT){
+  document.documentElement.style.setProperty("--draft-h","0px");
+  $("draft").remove();
+}
+
+/* ============================================================================
+   16b) TEST HOOK — inert in production; only active with ?debug or #debug.
+   Every pilot drives the REAL input and scoring paths (tryWhack -> resolveOutcome).
+   No pilot writes game.conf directly.
+   ========================================================================== */
+if(new URLSearchParams(location.search).has("debug") || location.hash==="#debug"){
+  const drive = (each, maxSteps) => {
+    startRun(); let n=0;
+    while(game.state!=="results" && n<maxSteps){
+      if(game.state==="transition"){ if(game._pendingLevel!=null) beginLevel(game._pendingLevel); continue; }
+      if(game.state!=="playing" && game.state!=="bonus") break;
+      each(); update(1/60); n++;
+    }
+    return { state:game.state, score:Math.round(game.conf), whacks:game.whacks,
+             custody:game.custody, bailGrants:game.bailGrants, escaped:game.escaped,
+             best:game.bestStreak, topPriors:game.topPriors, steps:n };
+  };
+  window.__whack = {
+    game, grid, cases, LEVELS, BONUS, SHOPFRONT_STATES, SCORE, CONTENT, INTERNAL_DRAFT,
+    step(dt=1/60){ update(dt); render(); },
+    play(){ startRun(); },
+    whack(i){ return tryWhack(i); },
+    shopState(){ return SHOPFRONT_STATES[shopStateIdx()]; },
+    // geometry, so the 44px minimum hit target is measurable and not assumed
+    cellRect, doorRect, hitTest,
+    // Force the system's custody/bail roll. null = back to the real weighting.
+    forceRoll(kind=null){ game._forceRoll=kind; return kind; },
+    // Slam every up-figure's window shut, so it escapes through the real path.
+    expireAll(){ let n=0; for(const h of grid) if(catchable(h.fig)||h.fig?.phase==="warn"){ h.fig.phase="up"; h.fig.t=1e9; n++; } return n; },
+
+    // A PERFECT run: catch every figure the frame it becomes catchable, through
+    // all 3 levels + the bonus, with the real random bail rolls left alone. The
+    // bail loop still fires — each resurface drains and each instant re-catch
+    // gives it back — so a 100 here proves the whole cycle balances. -> score 100
+    autopilot(maxSteps=80000){
+      game._forceRoll=null;
+      return drive(()=>{ for(const h of grid) if(catchable(h.fig)) tryWhack(h.idx); }, maxSteps);
+    },
+    // The WORST run: never whack, and force every roll to BAIL, and shut every
+    // window the instant it opens so every figure escapes. -> score 0
+    failpilot(maxSteps=80000){
+      game._forceRoll="bail";
+      const r=drive(()=>{ for(const h of grid) if(h.fig && h.fig.phase!=="duck" && h.fig.phase!=="caught"){ h.fig.phase="up"; h.fig.t=1e9; } }, maxSteps);
+      game._forceRoll=null; return r;
+    },
+    // Never input at all — the passive path, on the real timers. -> score 0
+    idlepilot(maxSteps=80000){
+      game._forceRoll=null;
+      return drive(()=>{}, maxSteps);
+    },
+    // Tuning harness: catch each appearance with probability p.
+    sim(p=0.7, maxSteps=80000){
+      game._forceRoll=null;
+      return drive(()=>{
+        for(const h of grid){
+          const f=h.fig; if(!catchable(f)) continue;
+          if(f._take===undefined) f._take = Math.random()<p;
+          if(f._take) tryWhack(h.idx);
+        }
+      }, maxSteps);
+    },
+  };
+}
+
+/* ============================================================================
+   17) BOOT / LOADING
+   ========================================================================== */
+(function boot(){
+  const bar=$("load-bar"); let p=0;
+  const iv=setInterval(()=>{ p=Math.min(100,p+rand(14,30)); bar.style.width=p+"%";
+    if(p>=100){ clearInterval(iv); setTimeout(goTitle, 260); }
+  }, 130);
+})();
+</script>
+</body>
+</html>

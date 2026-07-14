@@ -1,0 +1,1814 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="description" content="Catch and Release — The Docket. Work a day's list. Read the file, make the call: Remand or Bail. Then watch what the settings do with it." />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#101623" />
+<title>Catch and Release — The Docket</title>
+<style>
+/* ============================================================================
+   CATCH AND RELEASE — THE DOCKET  (self-contained static build)
+   No build step, no dependencies, no external network calls, no CDN.
+   Mechanic: READ-AND-JUDGE. An untimed decision game — you read a case file
+             and choose Remand or Bail, then a Judge's Ruling overlay reveals
+             what the settings actually do with your call.
+             (NOT speed-sorting, NOT drag-to-target under pressure, NOT arcade.)
+   Sibling of the "Catch and Release" suite: shares the night-street palette and
+   the exact semantic colour language (green=CUSTODY, red=BAIL GRANTED,
+   amber=BUSINESS CONFIDENCE, blue=the player) — but the surface is a manila
+   case file under a desk lamp, the motion is slow, and there is no juice.
+   Colour is always backed by an icon + a text label.
+   ========================================================================== */
+:root{
+  /* --- family palette (BRIEF §4) — identical across all four builds -------- */
+  --ink:#101623;            /* night street / dark courtroom desk */
+  --ink-2:#161F30;          /* raised surface */
+  --paper:#EDF2F7;          /* text on dark */
+  --paper-dim:#94A5BC;      /* muted text */
+  --amber:#F2A93B;          /* desk lamp / BUSINESS CONFIDENCE — primary accent */
+  --amber-lite:#FFD284;
+  --amber-deep:#B87516;
+  --blue:#4C8FE8;           /* the player / your call */
+  --blue-lite:#8FC0FF;
+  --blue-deep:#1F4F8F;
+  --green:#4FD18B;          /* CUSTODY — remand upheld */
+  --green-deep:#1B7A4E;
+  --red:#E4573D;            /* BAIL GRANTED — the override */
+  --red-deep:#8F2C1C;
+  --silhouette:#2A3448;     /* abstract file/figure fill (no person is drawn) */
+  /* --- this build's own surface: the manila case file --------------------- */
+  --manila:#E7D8B2;
+  --manila-2:#DCCB9F;
+  --manila-edge:#C0AC7C;
+  --manila-ink:#2C2618;     /* text on manila */
+  --manila-dim:#6F6248;     /* muted text on manila */
+  --manila-rule:rgba(44,38,24,.14);
+  --line:rgba(148,165,188,.16);
+  --card:rgba(22,31,48,.88);
+  --card-brd:rgba(148,165,188,.22);
+  --focus:#8FC0FF;
+  --radius:16px;
+  --shadow:0 18px 50px rgba(0,0,0,.5);
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  --serif:ui-serif,Georgia,"Times New Roman",Times,serif;
+  --mono:ui-monospace,"Cascadia Code","SFMono-Regular","Segoe UI Mono",Menlo,Consolas,monospace;
+  --draft-h:22px;           /* height of the INTERNAL DRAFT bar; 0 when flag off */
+}
+/* high-contrast toggle overrides */
+html[data-contrast="on"]{
+  --ink:#05080F; --paper:#FFFFFF; --paper-dim:#CBD8E8;
+  --green:#7BF0C0; --red:#FF8A73; --amber:#FFC45E;
+  --manila:#F6ECD2; --manila-ink:#14110A; --manila-dim:#4A4130; --manila-rule:rgba(20,17,10,.3);
+  --line:rgba(205,216,232,.34); --card:rgba(5,8,15,.95); --card-brd:rgba(205,216,232,.46);
+}
+/* INTERNAL_DRAFT=false removes the bar and reclaims its space — no other edit */
+html[data-draft="off"]{ --draft-h:0px; }
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+html{background:#070A11}
+body{
+  font-family:var(--font); color:var(--paper);
+  background:radial-gradient(120% 80% at 50% -10%, #1b2438 0%, #0d1220 45%, #070A11 100%);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow:hidden; overscroll-behavior:none;
+}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- Stage: centred vertical play strip, framed on wide screens ----------- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#field{
+  position:relative; width:min(100vw,560px); height:100dvh; height:100vh;
+  overflow:hidden; box-shadow:0 0 0 1px var(--line), 0 30px 90px rgba(0,0,0,.6);
+  background:var(--ink);
+  display:flex; flex-direction:column;
+}
+@media (min-width:600px){ #field{border-radius:22px; height:min(100dvh,940px); height:min(100vh,940px)} }
+
+/* the desk + the warm pool of lamp light the file sits in */
+#lamp{position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(72% 42% at 50% 40%, rgba(242,169,59,.13) 0%, rgba(242,169,59,.05) 45%, rgba(0,0,0,0) 72%),
+    linear-gradient(180deg, rgba(0,0,0,.34) 0%, rgba(0,0,0,0) 26%, rgba(0,0,0,0) 62%, rgba(6,9,15,.6) 100%);}
+#lamp::after{content:"";position:absolute;left:0;right:0;bottom:0;height:31%;
+  background:linear-gradient(180deg, #131A28 0%, #0C111C 60%, #080C14 100%);
+  border-top:1px solid rgba(242,169,59,.09)}
+canvas#fx{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:4}
+
+/* ---- INTERNAL DRAFT watermark (P0) --------------------------------------- */
+#draft{position:absolute;top:0;left:0;right:0;height:var(--draft-h);z-index:30;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;
+  font:800 9px/1 var(--font);letter-spacing:.17em;text-transform:uppercase;color:#3A2A08;
+  background:repeating-linear-gradient(135deg,var(--amber) 0 11px,var(--amber-deep) 11px 22px);
+  box-shadow:0 1px 0 rgba(0,0,0,.4)}
+html[data-draft="off"] #draft{display:none}
+
+/* ---- HUD: the live docket-summary panel ---------------------------------- */
+#hud{position:relative;z-index:6;flex:0 0 auto;
+  padding:calc(var(--draft-h) + 10px) 14px 10px; display:none; flex-direction:column; gap:9px}
+#hud.show{display:flex}
+.hud-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+/* #toggles is absolutely positioned over the right of this row, so the pill has
+   to stop short of it: 4×34 buttons + 3×7 gaps + 10 right = 167px, less the
+   14px row padding, plus a little breathing room. */
+.docket-pill{font:700 10.5px/1 var(--font);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--paper-dim);background:rgba(10,15,26,.66);border:1px solid var(--line);
+  padding:6px 10px;border-radius:999px;
+  max-width:calc(100% - 162px);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.docket-pill b{color:var(--paper);font-weight:800}
+/* On narrow phones there is no room for the docket name beside the toggles.
+   Drop it rather than truncate — the transition screen already names it. */
+@media (max-width:429px){ .docket-pill b{display:none} }
+.tally{display:flex;gap:7px}
+.tally-chip{display:flex;align-items:center;gap:5px;padding:6px 9px;border-radius:999px;
+  font:800 11px/1 var(--mono);background:rgba(10,15,26,.66);border:1px solid var(--line);color:var(--paper-dim)}
+.tally-chip svg{width:11px;height:11px;display:block;flex:0 0 auto}
+.tally-chip.held{color:var(--green);border-color:rgba(79,209,139,.4);background:rgba(79,209,139,.09)}
+.tally-chip.over{color:var(--red);border-color:rgba(228,87,61,.42);background:rgba(228,87,61,.1)}
+.tally-chip.over.bump{animation:chipBump .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes chipBump{0%{transform:scale(1)}35%{transform:scale(1.24)}100%{transform:scale(1)}}
+.meter-wrap{flex:1;min-width:0}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.meter-label{font:700 9.5px/1 var(--font);letter-spacing:.11em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:5px}
+.meter-label svg{width:11px;height:11px;color:var(--amber)}
+.meter-val{font:800 14px/1 var(--mono);color:var(--amber-lite)}
+.meter-val small{color:var(--paper-dim);font-weight:600}
+.meter-bar{height:8px;border-radius:999px;background:rgba(8,12,20,.8);border:1px solid var(--line);overflow:hidden}
+.meter-fill{height:100%;width:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--amber-deep),var(--amber));
+  box-shadow:0 0 12px rgba(242,169,59,.42);transition:width .7s cubic-bezier(.2,.8,.2,1)}
+.meter-fill.low{background:linear-gradient(90deg,var(--red-deep),var(--red));box-shadow:0 0 12px rgba(228,87,61,.4)}
+html[data-motion="off"] .meter-fill{transition:none}
+.progress-line{height:3px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.progress-inner{height:100%;width:0;background:var(--paper-dim);opacity:.55;transition:width .35s ease}
+
+/* ---- Top-right toggles ---------------------------------------------------- */
+#toggles{position:absolute;top:calc(var(--draft-h) + 8px);right:10px;display:flex;gap:7px;z-index:9}
+.toggle{width:34px;height:34px;border-radius:10px;border:1px solid var(--card-brd);
+  background:rgba(10,15,26,.72);color:var(--paper-dim);cursor:pointer;display:grid;place-items:center;
+  backdrop-filter:blur(8px);transition:transform .14s ease,color .14s ease,border-color .14s}
+.toggle:hover{transform:translateY(-1px);color:var(--paper)}
+.toggle[aria-pressed="true"]{color:var(--amber);border-color:rgba(242,169,59,.5)}
+.toggle svg{width:16px;height:16px;display:block}
+.toggle:focus-visible,button:focus-visible,a.btn:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ============================================================================
+   THE DESK — where the case file sits. DOM, not canvas.
+   ========================================================================== */
+#desk{position:relative;z-index:5;flex:1 1 auto;min-height:0;display:none;
+  align-items:center;justify-content:center;padding:4px 14px 0}
+#desk.show{display:flex}
+#desk.shake{animation:deskShake .34s cubic-bezier(.36,.07,.19,.97)}
+@keyframes deskShake{10%,90%{transform:translate(-1px,0)}20%,80%{transform:translate(2px,0)}
+  30%,50%,70%{transform:translate(-3px,1px)}40%,60%{transform:translate(3px,-1px)}}
+html[data-motion="off"] #desk.shake{animation:none}
+
+/* the manila case file */
+#file{position:relative;width:100%;max-width:410px;
+  background:linear-gradient(158deg,var(--manila) 0%,var(--manila-2) 100%);
+  border:1px solid var(--manila-edge);border-radius:4px 4px 3px 3px;
+  box-shadow:0 1px 0 rgba(255,255,255,.4) inset, 0 16px 34px rgba(0,0,0,.5), 0 3px 8px rgba(0,0,0,.4);
+  padding:13px 15px 14px; color:var(--manila-ink); touch-action:none; cursor:grab;
+  transform:rotate(-.5deg);}
+#file.dragging{cursor:grabbing}
+#file.deal{animation:dealIn .42s cubic-bezier(.2,.8,.2,1)}
+@keyframes dealIn{from{opacity:0;transform:translateY(16px) rotate(2.4deg)}to{opacity:1;transform:rotate(-.5deg)}}
+#file.away{animation:fileAway .3s ease-in forwards}
+@keyframes fileAway{to{opacity:0;transform:translateY(-14px) rotate(-2deg)}}
+html[data-motion="off"] #file.deal,html[data-motion="off"] #file.away{animation:none}
+/* the faint stack of files underneath — depth, no content */
+#file::before,#file::after{content:"";position:absolute;left:5px;right:5px;bottom:-4px;height:9px;
+  background:var(--manila-2);border:1px solid var(--manila-edge);border-radius:0 0 4px 4px;z-index:-1;opacity:.75}
+#file::after{left:9px;right:9px;bottom:-8px;opacity:.5}
+/* punch hole + tab */
+.file-tab{position:absolute;top:-9px;right:16px;height:10px;padding:0 10px;border-radius:3px 3px 0 0;
+  background:var(--manila-2);border:1px solid var(--manila-edge);border-bottom:0}
+
+.file-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  border-bottom:1.5px solid var(--manila-rule);padding-bottom:8px;margin-bottom:9px}
+.case-no{font:800 13px/1 var(--mono);letter-spacing:.04em;color:var(--manila-ink)}
+.case-court{font:700 8.5px/1.3 var(--font);letter-spacing:.13em;text-transform:uppercase;color:var(--manila-dim);text-align:right}
+/* P0: the persistent "illustrative" label — on every card, always */
+.illus{display:flex;align-items:center;gap:5px;margin-bottom:9px;
+  font:700 8.5px/1.25 var(--font);letter-spacing:.05em;text-transform:uppercase;color:var(--manila-dim);
+  background:rgba(44,38,24,.07);border:1px dashed var(--manila-edge);border-radius:4px;padding:4px 7px}
+.illus svg{width:10px;height:10px;flex:0 0 auto;display:block}
+
+.f-offence{font:700 clamp(19px,5.4vw,23px)/1.15 var(--serif);letter-spacing:-.01em;margin:0 0 3px}
+.f-sev{display:inline-flex;align-items:center;gap:4px;font:700 8.5px/1 var(--font);letter-spacing:.09em;
+  text-transform:uppercase;color:var(--manila-dim);border:1px solid var(--manila-edge);border-radius:3px;padding:3px 6px}
+.f-note{font:400 13.5px/1.5 var(--serif);color:var(--manila-ink);margin:9px 0 0;opacity:.9}
+
+/* the priors block — the spine of the decision, so it reads first */
+.priors{display:flex;align-items:center;gap:11px;margin:11px 0 0;
+  background:rgba(44,38,24,.06);border-left:3px solid var(--manila-edge);border-radius:0 5px 5px 0;padding:8px 10px}
+.priors-n{font:800 27px/1 var(--mono);letter-spacing:-.03em;min-width:30px;text-align:center}
+.priors-l{font:700 9px/1.35 var(--font);letter-spacing:.09em;text-transform:uppercase;color:var(--manila-dim)}
+.priors.repeat{background:rgba(143,44,28,.09);border-left-color:var(--red-deep)}
+.priors.repeat .priors-n{color:var(--red-deep)}
+.flags{list-style:none;margin:9px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.flags li{display:flex;align-items:flex-start;gap:6px;font:600 11px/1.35 var(--font);color:var(--manila-ink)}
+.flags li svg{width:11px;height:11px;flex:0 0 auto;margin-top:1px;color:var(--red-deep)}
+
+/* drag affordance: edge hints that light up as you pull the file */
+.pull{position:absolute;top:50%;transform:translateY(-50%);z-index:6;pointer-events:none;opacity:0;
+  font:800 10px/1 var(--font);letter-spacing:.13em;text-transform:uppercase;
+  padding:8px 9px;border-radius:8px;transition:opacity .16s ease}
+.pull.l{left:2px;color:var(--green);border:1.5px solid var(--green);background:rgba(27,122,78,.9)}
+.pull.r{right:2px;color:#3A1008;border:1.5px solid var(--red);background:var(--red)}
+.pull.on{opacity:1}
+
+/* ---- the rubber stamp — the emotional centre ------------------------------ */
+#stamp{position:absolute;left:50%;top:52%;z-index:8;pointer-events:none;display:none;
+  transform:translate(-50%,-50%) rotate(-11deg);
+  padding:7px 15px;border-radius:5px;text-align:center;mix-blend-mode:multiply}
+#stamp.show{display:block}
+#stamp .st-txt{font:900 clamp(21px,6.2vw,27px)/1 var(--font);letter-spacing:.05em;white-space:nowrap;
+  display:flex;align-items:center;gap:8px}
+#stamp .st-txt svg{width:.78em;height:.78em;flex:0 0 auto}
+#stamp .st-sub{font:800 7.5px/1 var(--font);letter-spacing:.22em;margin-top:4px;opacity:.82}
+#stamp.bail{border:3.5px double var(--red-deep);color:var(--red-deep)}
+#stamp.custody{border:3.5px double var(--green-deep);color:var(--green-deep)}
+#stamp.thud{animation:thud .3s cubic-bezier(.2,1.4,.35,1)}
+#stamp.quiet{opacity:.42}
+#stamp.quiet.thud{animation:thudQuiet .34s cubic-bezier(.2,.9,.35,1)}
+@keyframes thud{0%{opacity:0;transform:translate(-50%,-50%) rotate(-11deg) scale(2.7)}
+  62%{opacity:1;transform:translate(-50%,-50%) rotate(-11deg) scale(.94)}
+  100%{opacity:1;transform:translate(-50%,-50%) rotate(-11deg) scale(1)}}
+@keyframes thudQuiet{0%{opacity:0;transform:translate(-50%,-50%) rotate(-11deg) scale(1.9)}
+  100%{opacity:.42;transform:translate(-50%,-50%) rotate(-11deg) scale(1)}}
+html[data-motion="off"] #stamp.thud{animation:none}
+#flash{position:absolute;inset:0;z-index:7;pointer-events:none;opacity:0;background:var(--red)}
+#flash.go{animation:flashOut .5s ease-out}
+@keyframes flashOut{0%{opacity:.3}100%{opacity:0}}
+html[data-motion="off"] #flash.go{animation:none}
+
+/* ---- the two calls -------------------------------------------------------- */
+#actions{position:relative;z-index:6;flex:0 0 auto;display:none;flex-direction:column;gap:8px;
+  padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+#actions.show{display:flex}
+.calls{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.call{appearance:none;cursor:pointer;border-radius:13px;padding:13px 9px;
+  background:rgba(22,31,48,.92);border:1.5px solid var(--card-brd);color:var(--paper);
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  transition:transform .14s cubic-bezier(.2,.8,.2,1),border-color .14s,background .14s}
+.call:hover:not(:disabled){transform:translateY(-2px)}
+.call:active:not(:disabled){transform:translateY(0) scale(.985)}
+.call:disabled{opacity:.4;cursor:default}
+.call svg{width:21px;height:21px;display:block}
+.call b{font:800 15px/1 var(--font);letter-spacing:.02em}
+.call span{font:600 9.5px/1.25 var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--paper-dim);text-align:center}
+.call.remand{border-color:rgba(79,209,139,.5)} .call.remand svg{color:var(--green)} .call.remand b{color:var(--green)}
+.call.remand:hover:not(:disabled){background:rgba(27,122,78,.22);border-color:var(--green)}
+.call.bail{border-color:rgba(228,87,61,.5)} .call.bail svg{color:var(--red)} .call.bail b{color:var(--red)}
+.call.bail:hover:not(:disabled){background:rgba(143,44,28,.22);border-color:var(--red)}
+.call.armed{border-width:2.5px}
+.hint{text-align:center;font:600 10px/1.35 var(--font);color:var(--paper-dim);opacity:.75}
+.hint .key{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:5px;vertical-align:-4px;
+  border:1px solid var(--card-brd);background:rgba(255,255,255,.05);font:800 10px/1 var(--mono);color:var(--paper)}
+
+/* ---- the Judge's Ruling panel (slides over the lower desk) ---------------- */
+#ruling{position:absolute;left:0;right:0;bottom:0;z-index:10;display:none;
+  padding:15px 14px calc(13px + env(safe-area-inset-bottom));
+  background:linear-gradient(0deg,var(--ink-2) 0%,var(--ink-2) 76%,rgba(22,31,48,0) 100%);
+  border-top:1px solid var(--line);
+  flex-direction:column;gap:10px}
+#ruling.show{display:flex;animation:rulingUp .42s cubic-bezier(.2,.8,.2,1)}
+@keyframes rulingUp{from{transform:translateY(26px);opacity:0}to{transform:none;opacity:1}}
+html[data-motion="off"] #ruling.show{animation:none}
+.r-eyebrow{font:800 9px/1 var(--font);letter-spacing:.2em;text-transform:uppercase;color:var(--paper-dim)}
+.r-head{display:flex;align-items:center;gap:9px}
+.r-icon{width:34px;height:34px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center}
+.r-icon svg{width:19px;height:19px}
+.r-verdict{font:800 17px/1.12 var(--font);letter-spacing:-.01em}
+.r-tag{font:800 8.5px/1 var(--font);letter-spacing:.13em;text-transform:uppercase;margin-top:3px}
+.r-body{font:400 13px/1.5 var(--serif);color:var(--paper-dim)}
+.r-body b{color:var(--paper);font-weight:700}
+#ruling.bad .r-icon{background:rgba(143,44,28,.3);color:var(--red);box-shadow:0 0 0 1px rgba(228,87,61,.4) inset}
+#ruling.bad .r-verdict,#ruling.bad .r-tag{color:var(--red)}
+#ruling.good .r-icon{background:rgba(27,122,78,.28);color:var(--green);box-shadow:0 0 0 1px rgba(79,209,139,.4) inset}
+#ruling.good .r-verdict,#ruling.good .r-tag{color:var(--green)}
+#ruling.flat .r-icon{background:rgba(76,143,232,.22);color:var(--blue-lite);box-shadow:0 0 0 1px rgba(76,143,232,.36) inset}
+#ruling.flat .r-verdict{color:var(--paper)} #ruling.flat .r-tag{color:var(--blue-lite)}
+.r-delta{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  border-radius:9px;padding:8px 11px;background:rgba(8,12,20,.55);border:1px solid var(--line)}
+.r-delta .lbl{font:700 9px/1.3 var(--font);letter-spacing:.09em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:5px}
+.r-delta .lbl svg{width:11px;height:11px;color:var(--amber)}
+.r-delta .val{font:800 15px/1 var(--mono)}
+.r-delta .val.zero{color:var(--paper-dim)} .r-delta .val.down{color:var(--red)} .r-delta .val.up{color:var(--green)}
+
+/* ---- Screens (DOM overlay) ------------------------------------------------ */
+.screen{position:absolute;inset:0;z-index:12;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:calc(var(--draft-h) + 18px) 20px 20px;gap:16px;
+  overflow-y:auto;
+  background:radial-gradient(120% 70% at 50% 4%, rgba(22,31,48,.6), rgba(7,10,17,.9) 70%);
+  backdrop-filter:blur(3px)}
+.screen.show{display:flex;animation:fadeIn .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--card-brd);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 20px;display:flex;flex-direction:column;gap:14px}
+.eyebrow{font:800 11px/1 var(--font);letter-spacing:.17em;text-transform:uppercase;color:var(--amber)}
+h1.title{font:800 clamp(28px,7.6vw,42px)/1.02 var(--font);letter-spacing:-.025em;margin:0}
+h1.title .accent{color:var(--amber)}
+.subtitle{font:700 12px/1 var(--font);letter-spacing:.24em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:9px}
+.subtitle::before,.subtitle::after{content:"";height:1px;flex:1;background:var(--line)}
+h2{font:800 clamp(21px,5.6vw,28px)/1.06 var(--font);letter-spacing:-.015em;margin:0}
+p{margin:0;color:var(--paper-dim);font-size:14.5px;line-height:1.55}
+p.lead{color:var(--paper);font-size:15.5px}
+.attributed{font-size:12.5px;line-height:1.5;color:var(--paper-dim);
+  border-left:3px solid var(--amber);padding:10px 0 10px 12px;background:rgba(242,169,59,.05);border-radius:0 8px 8px 0}
+.attributed .src{display:block;margin-top:6px;color:#7788a0;font-size:11.5px}
+.pending{color:var(--amber);font-weight:700;font-variant:small-caps;letter-spacing:.02em}
+
+.btn{appearance:none;border:0;cursor:pointer;font:700 15.5px/1 var(--font);letter-spacing:.01em;
+  padding:14px 18px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  text-decoration:none;transition:transform .14s cubic-bezier(.2,.8,.2,1),box-shadow .14s,filter .14s;width:100%}
+.btn:active{transform:translateY(1px) scale(.995)}
+.btn-primary{background:linear-gradient(180deg,var(--amber-lite),var(--amber));color:#33240A;
+  box-shadow:0 10px 26px rgba(242,169,59,.3),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(242,169,59,.38),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--paper);border:1px solid var(--card-brd)}
+.btn-ghost:hover{background:rgba(255,255,255,.09);transform:translateY(-1px)}
+.btn-green{background:linear-gradient(180deg,#7CE8B4,var(--green));color:#04231A;box-shadow:0 10px 26px rgba(79,209,139,.28)}
+.btn-row{display:flex;gap:9px}
+.btn-row .btn{width:auto;flex:1}
+.btnset{display:flex;flex-direction:column;gap:9px}
+.controls-hint{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;color:var(--paper-dim);font-size:12.5px;align-items:center}
+.key{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 6px;border-radius:6px;
+  border:1px solid var(--card-brd);background:rgba(255,255,255,.05);font:800 12px/1 var(--mono);color:var(--paper)}
+
+/* how-to legend */
+.legend{display:flex;flex-direction:column;gap:11px}
+.legend-item{display:flex;align-items:flex-start;gap:11px}
+.chip{width:40px;height:40px;border-radius:11px;flex:0 0 auto;display:grid;place-items:center}
+.chip svg{width:21px;height:21px;display:block}
+.chip.remand{background:linear-gradient(180deg,#7CE8B4,var(--green));color:#04231A}
+.chip.bail{background:linear-gradient(180deg,#F58469,var(--red));color:#3A1008}
+.chip.read{background:linear-gradient(180deg,var(--manila),var(--manila-2));color:var(--manila-ink)}
+.legend-item div p{font-size:12.5px}
+.legend-item strong{color:var(--paper);font-size:13.5px}
+
+/* results */
+.result-score{text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}
+.result-score .big{font:800 clamp(42px,14vw,66px)/1 var(--mono);color:var(--amber-lite);letter-spacing:-.03em}
+.result-score .of{font-size:13px;color:var(--paper-dim)}
+.result-verdict{font:700 15.5px/1.35 var(--font);text-align:center}
+/* the headline override number — the "concrete, memorable number" user story */
+.override-hero{display:flex;align-items:center;gap:12px;border-radius:12px;padding:12px 14px;
+  background:rgba(143,44,28,.18);border:1px solid rgba(228,87,61,.44)}
+.override-hero .oh-n{font:800 34px/1 var(--mono);color:var(--red);letter-spacing:-.03em}
+.override-hero .oh-t{font:700 12px/1.35 var(--font);color:var(--paper)}
+.override-hero .oh-t small{display:block;font-weight:600;font-size:11px;color:var(--paper-dim);margin-top:2px}
+.result-stats{display:flex;gap:8px;justify-content:center}
+.stat{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:10px 5px;text-align:center}
+.stat b{display:block;font:800 18px/1 var(--mono);color:var(--paper)}
+.stat span{font-size:9.5px;color:var(--paper-dim);letter-spacing:.04em;text-transform:uppercase;line-height:1.25;display:block;margin-top:3px}
+
+/* form */
+form{display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font:600 12.5px/1 var(--font);color:var(--paper)}
+.field input{font:500 16px/1 var(--font);padding:12px;border-radius:10px;color:var(--paper);
+  background:rgba(8,12,20,.75);border:1px solid var(--card-brd);width:100%}
+.field input::placeholder{color:#66788f}
+.field.two{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.err{color:#FF9D8A;font-size:11.5px;min-height:0}
+.field input[aria-invalid="true"]{border-color:var(--red)}
+.consent{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--paper-dim);line-height:1.4}
+.consent input{margin-top:2px;width:17px;height:17px;flex:0 0 auto;accent-color:var(--amber)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* leaderboard */
+.lb{width:100%;display:flex;flex-direction:column;gap:5px;max-height:44vh;overflow:auto}
+.lb-row{display:grid;grid-template-columns:30px 1fr auto;gap:9px;align-items:center;
+  padding:10px 11px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.lb-row .rank{font:800 13px/1 var(--mono);color:var(--paper-dim);text-align:center}
+.lb-row .who{font-weight:600;font-size:13.5px}
+.lb-row .who small{display:block;color:var(--paper-dim);font-weight:500;font-size:11.5px}
+.lb-row .sc{font:800 15px/1 var(--mono);color:var(--amber-lite)}
+.lb-row.me{background:rgba(242,169,59,.1);border-color:rgba(242,169,59,.45)}
+.lb-empty{color:var(--paper-dim);font-size:13.5px;text-align:center;padding:16px}
+
+/* footer / legal chrome */
+#footer{position:absolute;left:0;right:0;bottom:0;z-index:11;padding:9px 14px calc(9px + env(safe-area-inset-bottom));
+  display:none;background:linear-gradient(0deg,rgba(6,9,15,.96),rgba(6,9,15,0));
+  font-size:10px;line-height:1.4;color:#67788f;text-align:center}
+#footer.show{display:block}
+#footer .auth{color:#8496ae;font-weight:600}
+.legal-block{font-size:11px;color:var(--paper-dim);line-height:1.5;background:rgba(0,0,0,.24);
+  border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.legal-block strong{color:var(--paper)}
+.mini{font-size:11.5px;color:var(--paper-dim);text-align:center}
+
+/* loading */
+#screen-loading{background:var(--ink)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:18px}
+.loader-file{width:60px;height:74px;position:relative}
+.loader-file i{position:absolute;left:0;right:0;height:70px;border-radius:3px;
+  background:linear-gradient(158deg,var(--manila),var(--manila-2));border:1px solid var(--manila-edge);
+  transform-origin:50% 100%;animation:dealLoop 1.9s cubic-bezier(.4,0,.2,1) infinite}
+.loader-file i:nth-child(2){animation-delay:.28s} .loader-file i:nth-child(3){animation-delay:.56s}
+@keyframes dealLoop{0%{transform:translateY(-13px) rotate(-7deg);opacity:0}
+  22%{opacity:1}70%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(0) rotate(0);opacity:0}}
+.loader-bar{width:170px;height:4px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.loader-bar i{display:block;height:100%;width:0;background:var(--amber);border-radius:999px;transition:width .2s linear}
+.loader-txt{font:700 11px/1 var(--font);letter-spacing:.15em;text-transform:uppercase;color:var(--paper-dim)}
+
+@media (prefers-reduced-motion:reduce){
+  .screen.show,#ruling.show,#file.deal,#file.away,#stamp.thud,#desk.shake,#flash.go{animation:none}
+  .loader-file i{animation:none;opacity:1}
+}
+html[data-motion="off"] .loader-file i{animation:none;opacity:1}
+html[data-motion="off"] .screen.show{animation:none}
+/* Short viewports: tighten the file so the calls always stay on screen.
+   The offence, the prior-offence count, the flags, the illustrative label AND
+   the description all stay visible — every case detail the PRD requires is
+   present at every size. Only spacing gives way. */
+@media (max-height:680px){
+  #file{padding:10px 12px 11px}
+  .f-note{font-size:12.5px;margin-top:7px}
+  .priors{margin-top:8px;padding:6px 9px}
+  .priors-n{font-size:23px}
+  .illus{margin-bottom:7px}
+  #actions{padding:9px 14px calc(9px + env(safe-area-inset-bottom))}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="field">
+    <div id="lamp" aria-hidden="true"></div>
+    <canvas id="fx" aria-hidden="true"></canvas>
+
+    <!-- INTERNAL DRAFT watermark — P0, every screen, single flag -->
+    <div id="draft" aria-hidden="true">Internal draft — not for public distribution</div>
+
+    <!-- Live region: the docket must be followable without seeing the screen -->
+    <div id="live" class="sr-only" aria-live="polite" role="status"></div>
+
+    <!-- HUD: the live docket-summary panel -->
+    <div id="hud">
+      <!-- Row 1 keeps its right side clear: #toggles is absolutely positioned there. -->
+      <div class="hud-row">
+        <span class="docket-pill" id="hud-docket">Docket 1<b> · First Appearances</b></span>
+      </div>
+      <div class="hud-row">
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="meter-label" id="hud-bc-label">Business confidence</span>
+            <span class="meter-val" id="hud-bc">100<small>/100</small></span>
+          </div>
+          <div class="meter-bar"><div class="meter-fill" id="hud-fill"></div></div>
+        </div>
+      </div>
+      <div class="hud-row">
+        <div class="tally">
+          <span class="tally-chip held" id="hud-held" title="Remands upheld — custody"></span>
+          <span class="tally-chip over" id="hud-over" title="Your remand calls overridden to bail"></span>
+        </div>
+      </div>
+      <div class="progress-line"><div class="progress-inner" id="hud-progress"></div></div>
+    </div>
+
+    <!-- Toggles -->
+    <div id="toggles">
+      <button class="toggle" id="t-sound" aria-pressed="false" title="Sound (off)" aria-label="Toggle sound"></button>
+      <button class="toggle" id="t-motion" aria-pressed="false" title="Reduce motion" aria-label="Toggle reduced motion"></button>
+      <button class="toggle" id="t-contrast" aria-pressed="false" title="High contrast" aria-label="Toggle high contrast"></button>
+      <button class="toggle" id="t-pause" title="Pause" aria-label="Pause" style="display:none"></button>
+    </div>
+
+    <!-- THE DESK: the case file -->
+    <div id="desk">
+      <div id="flash" aria-hidden="true"></div>
+      <span class="pull l" id="pull-l" aria-hidden="true">Remand</span>
+      <span class="pull r" id="pull-r" aria-hidden="true">Bail</span>
+      <article id="file" role="group" aria-labelledby="f-offence" tabindex="-1">
+        <span class="file-tab" aria-hidden="true"></span>
+        <header class="file-head">
+          <span class="case-no" id="f-caseno">CASE #0000</span>
+          <span class="case-court" id="f-court">Bail application<br />Listed today</span>
+        </header>
+        <p class="illus" id="f-illus"></p>
+        <h3 class="f-offence" id="f-offence">—</h3>
+        <span class="f-sev" id="f-sev">—</span>
+        <div class="priors" id="f-priors">
+          <span class="priors-n" id="f-priors-n">0</span>
+          <span class="priors-l" id="f-priors-l">Prior offences<br />on this file</span>
+        </div>
+        <ul class="flags" id="f-flags"></ul>
+        <p class="f-note" id="f-note">—</p>
+      </article>
+      <div id="stamp" aria-hidden="true">
+        <span class="st-txt" id="stamp-txt"></span>
+        <span class="st-sub" id="stamp-sub"></span>
+      </div>
+    </div>
+
+    <!-- THE CALL: tap-to-choose is the primary input -->
+    <div id="actions">
+      <div class="calls">
+        <button class="call remand" id="btn-remand"><span id="ic-remand"></span><b>Remand</b><span>Keep in custody</span></button>
+        <button class="call bail" id="btn-bail"><span id="ic-bail"></span><b>Bail</b><span>Release pending court</span></button>
+      </div>
+      <p class="hint" id="call-hint">Tap a call — or drag the file. <span class="key">R</span> remand · <span class="key">B</span> bail</p>
+    </div>
+
+    <!-- THE JUDGE'S RULING -->
+    <section id="ruling" aria-label="Judge's ruling">
+      <span class="r-eyebrow">Judge's ruling</span>
+      <div class="r-head">
+        <div class="r-icon" id="r-icon"></div>
+        <div>
+          <div class="r-verdict" id="r-verdict">—</div>
+          <div class="r-tag" id="r-tag">—</div>
+        </div>
+      </div>
+      <p class="r-body" id="r-body">—</p>
+      <div class="r-delta">
+        <span class="lbl" id="r-delta-lbl">Business confidence</span>
+        <span class="val" id="r-delta">—</span>
+      </div>
+      <button class="btn btn-primary" id="btn-next">Next case</button>
+    </section>
+
+    <!-- LOADING -->
+    <section id="screen-loading" class="screen show" aria-label="Loading">
+      <div class="loader">
+        <div class="loader-file" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="loader-bar"><i id="load-bar"></i></div>
+        <div class="loader-txt">Listing today's docket…</div>
+      </div>
+    </section>
+
+    <!-- TITLE -->
+    <section id="screen-title" class="screen" aria-label="Start screen">
+      <div class="card">
+        <span class="eyebrow">A bail-settings mini-game</span>
+        <h1 class="title">The <span class="accent">Docket</span></h1>
+        <div class="subtitle">Catch and Release</div>
+        <p class="lead" id="framing-fact"></p>
+        <p id="framing-plan" style="font-size:12.5px"></p>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-play">Open today's docket</button>
+          <button class="btn btn-ghost" id="btn-how">How it works</button>
+        </div>
+        <div class="controls-hint">
+          <span>Take your time — nothing is timed</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section id="screen-howto" class="screen" aria-label="How it works">
+      <div class="card">
+        <span class="eyebrow">How it works</span>
+        <h2>Read the file. Make the call.</h2>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="chip read" id="lg-read"></div>
+            <div><strong>Every case is illustrative</strong><p id="lg-read-p"></p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip remand" id="lg-remand"></div>
+            <div><strong>Remand — keep in custody</strong><p>The call to make when the priors stack up. Watch the <b style="color:var(--paper)">prior offences</b> number: that is the spine of the decision.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip bail" id="lg-bail"></div>
+            <div><strong>Bail — release pending court</strong><p>The right call on a genuine first appearance for a minor matter. Bail is not the villain here. <b style="color:var(--paper)">The settings are.</b></p></div>
+          </div>
+        </div>
+        <p class="mini" id="lg-twist"></p>
+        <button class="btn btn-primary" id="btn-how-start">Open the docket</button>
+      </div>
+    </section>
+
+    <!-- TRANSITION -->
+    <section id="screen-transition" class="screen" aria-label="Next docket">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow" id="tr-eyebrow">Docket 2</span>
+        <h2 id="tr-name">Familiar Faces</h2>
+        <p id="tr-desc"></p>
+        <div class="result-score" style="margin:2px 0">
+          <span class="of">Business confidence</span>
+          <span class="big" id="tr-carry" style="font-size:clamp(28px,9vw,40px)">100</span>
+        </div>
+        <p class="mini" id="tr-note"></p>
+        <button class="btn btn-primary" id="btn-transition">Call the next docket</button>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="screen-pause" class="screen" aria-label="Paused">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow">Paused</span>
+        <h2>The court is adjourned</h2>
+        <div class="btnset" style="max-width:280px">
+          <button class="btn btn-primary" id="btn-resume">Resume</button>
+          <button class="btn btn-ghost" id="btn-restart">Restart the docket</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="screen-results" class="screen" aria-label="Results">
+      <div class="card">
+        <span class="eyebrow" id="res-eyebrow">Docket closed</span>
+        <div class="result-score">
+          <span class="big" id="res-score">0</span>
+          <span class="of">of 100 business confidence</span>
+        </div>
+        <p class="result-verdict" id="res-verdict"></p>
+        <div class="override-hero">
+          <span class="oh-n" id="res-over">0</span>
+          <span class="oh-t" id="res-over-t">remand calls overridden<small>—</small></span>
+        </div>
+        <div class="result-stats">
+          <div class="stat"><b id="res-cases">0</b><span>Cases reviewed</span></div>
+          <div class="stat"><b id="res-held">0</b><span>Remands upheld</span></div>
+          <div class="stat"><b id="res-calls">0</b><span>Calls correct</span></div>
+        </div>
+        <div class="attributed" id="res-citation"></div>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-leaderboard">Add my score to the board</button>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="btn-share">Share</button>
+            <button class="btn btn-ghost" id="btn-replay">Play again</button>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy" href="#" target="_blank" rel="noopener">Our bail plan</a>
+          </div>
+        </div>
+        <div class="legal-block" id="res-disclaimer"></div>
+      </div>
+    </section>
+
+    <!-- FORM -->
+    <section id="screen-form" class="screen" aria-label="Join the leaderboard">
+      <div class="card">
+        <span class="eyebrow">Add your score</span>
+        <h2>Join the board</h2>
+        <p style="font-size:12.5px">Your score will show as first name + postcode. <span id="form-privacy"></span></p>
+        <form id="lead-form" novalidate autocomplete="on">
+          <div class="field two">
+            <div class="field">
+              <label for="f-first">First name</label>
+              <input id="f-first" name="fname" autocomplete="given-name" maxlength="40" />
+              <span class="err" id="e-first"></span>
+            </div>
+            <div class="field">
+              <label for="f-last">Last name</label>
+              <input id="f-last" name="lname" autocomplete="family-name" maxlength="40" />
+              <span class="err" id="e-last"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-email">Email</label>
+            <input id="f-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="120" />
+            <span class="err" id="e-email"></span>
+          </div>
+          <div class="field">
+            <label for="f-postcode">Postcode</label>
+            <input id="f-postcode" name="postcode" inputmode="numeric" maxlength="4" pattern="\d{4}" />
+            <span class="err" id="e-postcode"></span>
+          </div>
+          <div class="hp" aria-hidden="true"><label>Website<input id="f-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <label class="consent">
+            <input type="checkbox" id="f-consent" />
+            <span id="consent-label"></span>
+          </label>
+          <span class="err" id="e-consent"></span>
+          <button class="btn btn-primary" type="submit" id="btn-submit">Submit &amp; see the board</button>
+          <button class="btn btn-ghost" type="button" id="btn-skip">Skip — just show the board</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="screen-leaderboard" class="screen" aria-label="Leaderboard">
+      <div class="card">
+        <span class="eyebrow">Leaderboard</span>
+        <h2>Who held the line</h2>
+        <div class="lb" id="lb-list"></div>
+        <p class="mini" id="lb-note"></p>
+        <div class="btnset">
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate2" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy2" href="#" target="_blank" rel="noopener">Our bail plan</a>
+          </div>
+          <button class="btn btn-ghost" id="btn-replay2">Play again</button>
+        </div>
+      </div>
+    </section>
+
+    <footer id="footer">
+      <div class="auth" id="foot-auth"></div>
+      <div id="foot-disclaimer"></div>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+/* ============================================================================
+   1) CONTENT  —  SINGLE SOURCE OF TRUTH FOR EVERY FACTUAL CLAIM
+   --------------------------------------------------------------------------
+   >>> LEGAL / COMMS REVIEW HAPPENS HERE. <<<
+   Everything with any factual weight is in this one object. Figures ship as
+   clearly-marked placeholders until legal supplies signed-off wording.
+
+   Guardrails — STRICTER here than in the three arcade siblings, because a case
+   card is the most sensitive surface in the suite:
+     - NO CASE IS REAL. Cases are assembled procedurally from the approved
+       vocabulary below (offence archetype + a prior-offence count + an approved
+       note + an optional approved flag). The entire possible output space of
+       the game is auditable from this one object — there is no case text
+       anywhere else in the file.
+     - Case details are NEVER presented as a true story, a real record, or a
+       reconstruction of anything that happened. Every card carries a permanent
+       visible "Illustrative case — not a real record" label (P0).
+     - NO VICTIMS. Notes describe property matters in neutral, non-lurid terms
+       and are always "alleged". No person is named, described, implied, or
+       depicted as harmed. No injuries, no weapons, no violence, no threats.
+     - NO PERSON IS DEPICTED AT ALL. This is a paper docket: the defendant is a
+       file, not a body. There is no silhouette, no figure, no avatar — the only
+       thing drawn is the manila file itself.
+     - No real, identifiable individual, company, union, organisation, brand or
+       logo, anywhere, in visuals or copy. Shopfronts are generic labels only.
+     - Every displayed figure shows its source in the same view.
+   ========================================================================== */
+const CONTENT = {
+  // Framing (title screen). Attributed, never asserted.
+  framingFact:
+    "Bail settings — not police effort — decide who is back on the street " +
+    "tomorrow. [FRAMING COPY PENDING LEGAL SIGN-OFF]",
+  framingPlan:
+    "[POLICY HOOK PENDING] — the Liberal Party's plan for bail laws that treat " +
+    "a repeat offence like a repeat offence.",
+
+  // --- APPROVED CASE VOCABULARY (the whole auditable output space) ----------
+  // Offence archetypes — exactly the suite's approved list (BRIEF section 4).
+  // severity: 0 = minor property matter, 1 = mid, 2 = serious property matter.
+  // Severity NEVER changes the correct call (the prior-offence count does) — it
+  // only colours the file and scales the weight of a repeat-offence release.
+  offences: [
+    { label:"Retail theft",        severity:0, sevLabel:"Minor property matter" },
+    { label:"Criminal damage",     severity:0, sevLabel:"Minor property matter" },
+    { label:"Theft from vehicle",  severity:1, sevLabel:"Property matter" },
+    { label:"Shop break-in",       severity:1, sevLabel:"Property matter" },
+    { label:"Burglary",            severity:2, sevLabel:"Serious property matter" },
+    { label:"Car theft",           severity:2, sevLabel:"Serious property matter" },
+  ],
+  // Generic shopfront labels (BRIEF section 4). No real businesses, ever.
+  places: ["Corner Store","Chemist","Bakery","Newsagent","Hardware",
+           "Cafe","Grocer","Barber","Bottle Shop","Laundromat"],
+  // Approved note templates. {place} is filled from `places` above.
+  // Property only. Always "alleged". No person, no harm, no detail.
+  notes: {
+    "Retail theft":       "Alleged removal of stock from a {place} without payment.",
+    "Criminal damage":    "Alleged damage to the shopfront of a {place}.",
+    "Theft from vehicle": "Alleged removal of property from a parked vehicle.",
+    "Shop break-in":      "Alleged entry to a {place} outside trading hours.",
+    "Burglary":           "Alleged entry to a premises with intent to steal.",
+    "Car theft":          "Alleged taking of a motor vehicle without consent.",
+  },
+  // Approved file flags. Generic, procedural, never lurid. Repeat files only.
+  flags: [
+    "Alleged offence while on bail",
+    "Previously failed to appear",
+    "Bail conditions previously varied",
+  ],
+  // The permanent on-card label (P0 acceptance criterion).
+  illustrativeLabel: "Illustrative case — not a real record",
+  // How-to copy that describes the fiction, kept here with the other claims.
+  howtoFiction:
+    "Every file is assembled at random from a short fixed list of generic offence " +
+    "categories. Nothing here is a real case, a real record, or a real person.",
+  howtoTwist:
+    "You are not being scored on how tough you are. You are being scored on what " +
+    "the settings do with your call.",
+
+  // Dockets (levels).
+  dockets: {
+    d1:{ name:"First Appearances",     desc:"Mostly first and second appearances. The rulings will mostly agree with you." },
+    d2:{ name:"Familiar Faces",        desc:"More of these files have history on them. Watch what the rulings start doing." },
+    d3:{ name:"The Same Names Again",  desc:"Most of today's list has been here before. Make the call anyway." },
+    bonus:{ name:"If It Were Up to You", desc:"A hypothetical docket, under settings that do not exist. Every call you make is honoured. No overrides." },
+  },
+
+  // Headline attributed statistic on the results screen.
+  // NOTHING here is asserted as the party's own finding.
+  citation: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",
+    framing: "…of people on bail went on to reoffend while awaiting court, with " +
+             "repeat offending concentrated among those who already had prior " +
+             "matters on file. (Framing copy PENDING.)",
+    source:  "[SOURCE PENDING]",
+    date:    "[DATE OF CITED SOURCE PENDING]",
+    signoff: "PENDING",
+  },
+  // Second (business-impact) figure — also blocking, also a placeholder.
+  citationBusiness: {
+    figure:  "[BUSINESS-IMPACT FIGURE PENDING LEGAL SIGN-OFF]",
+    framing: "…is the estimated cost to small business of repeat property offending. (Framing copy PENDING.)",
+    source:  "[SOURCE PENDING]",
+    date:    "[DATE OF CITED SOURCE PENDING]",
+  },
+
+  disclaimer:
+    "Every case in this game is fictional and is generated at random from a short " +
+    "fixed list of generic offence categories. No real person, case, court, business " +
+    "or organisation is depicted, named or referred to, and no case detail is drawn " +
+    "from any real record. No defendant is depicted at all. The offence categories, " +
+    "prior-offence counts and outcomes are illustrative game content, not data. Any " +
+    "statistic shown is attributed to its source.",
+
+  authorisation: "Authorised by [NAME PENDING], [PARTY & ADDRESS PENDING].",
+
+  privacy:
+    "We collect your details to contact you about this campaign. You can opt out " +
+    "any time. See our [collection statement — LINK PENDING].",
+  consentLabel:
+    "I agree to be contacted and to the collection statement above. [WORDING PENDING LEGAL SIGN-OFF]",
+
+  donateUrl: "#donate-url-pending",
+  policyUrl: "#bail-policy-url-pending",
+
+  shareText: (score, overrides) =>
+    `I worked a full docket in "Catch and Release — The Docket". ${overrides} of my remand ` +
+    `calls were overridden to bail anyway. Business confidence: ${score}/100. How would you go?`,
+};
+
+/* ============================================================================
+   2) THEME + SMALL HELPERS
+   ========================================================================== */
+const COL = {
+  ink:"#101623", ink2:"#161F30", paper:"#EDF2F7", dim:"#94A5BC",
+  amber:"#F2A93B", amberLite:"#FFD284", amberDeep:"#B87516",
+  blue:"#4C8FE8", blueLite:"#8FC0FF",
+  green:"#4FD18B", greenDeep:"#1B7A4E",
+  red:"#E4573D", redDeep:"#8F2C1C",
+  manila:"#E7D8B2", manilaEdge:"#C0AC7C", manilaInk:"#2C2618",
+};
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const choice=a=>a[Math.floor(Math.random()*a.length)];
+const easeOutCubic=t=>1-Math.pow(1-t,3);
+const TAU=Math.PI*2;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function shuffled(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=randInt(0,i); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+/* --- INTERNAL DRAFT: the single flag. false removes the banner everywhere. -- */
+const INTERNAL_DRAFT = true;
+document.documentElement.setAttribute("data-draft", INTERNAL_DRAFT ? "on" : "off");
+
+/* ============================================================================
+   3) PERSISTENT SETTINGS — shared across the four "Catch and Release" builds
+   ========================================================================== */
+const store = {
+  get(k,d){ try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d} },
+  set(k,v){ try{localStorage.setItem(k,JSON.stringify(v))}catch{} },
+};
+const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const settings = {
+  sound:    store.get("cr_sound", false),
+  motion:   store.get("cr_motion", prefersReducedMotion ? "off" : "on"),
+  contrast: store.get("cr_contrast", false),
+};
+const motionOn = () => settings.motion === "on";
+
+/* ============================================================================
+   4) AUDIO — WebAudio, muted by default, lazy-init on first gesture.
+   Restrained to match the tone: paper, a wooden stamp, a soft chime. No arcade.
+   Every cue has a redundant visual, so sound-off loses no information.
+   ========================================================================== */
+const Sound = (()=>{
+  let ctx=null, master=null, ready=false;
+  function init(){
+    if(ready) return;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=.5; master.connect(ctx.destination); ready=true;
+    }catch{}
+  }
+  function tone(freq,dur,type="sine",vol=.3,slideTo=null){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime;
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1,slideTo),t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.006);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.02);
+  }
+  function noise(dur,vol=.2,hz=1400){                    // paper rustle / stamp dust
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const n=Math.max(1,Math.floor(ctx.sampleRate*dur));
+    const buf=ctx.createBuffer(1,n,ctx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    const src=ctx.createBufferSource(); src.buffer=buf;
+    const f=ctx.createBiquadFilter(); f.type="bandpass"; f.frequency.value=hz; f.Q.value=.7;
+    const g=ctx.createGain(); g.gain.value=vol;
+    src.connect(f); f.connect(g); g.connect(master); src.start();
+  }
+  return {
+    init,
+    deal(){ noise(.12,.09,2200) },                                   // a file lands on the desk
+    stampHard(){ tone(118,.17,"sine",.22,50); noise(.09,.16,900); }, // the stamp thuds
+    stampSoft(){ tone(150,.09,"sine",.06,92); noise(.05,.04,1100); },
+    upheld(){ tone(392,.1,"sine",.09); setTimeout(()=>tone(588,.14,"sine",.08),80); },
+    docket(){ tone(300,.14,"sine",.1,420); setTimeout(()=>tone(450,.2,"sine",.07),110); },
+    win(){ [392,523,659].forEach((f,i)=>setTimeout(()=>tone(f,.3,"sine",.09),i*110)) },
+    lose(){ tone(160,.5,"sine",.11,70) },
+  };
+})();
+
+/* ============================================================================
+   5) FX CANVAS + RESPONSIVE SCALER (DPR-aware)
+   --------------------------------------------------------------------------
+   The game itself is DOM (a paper docket, not a sprite field). This canvas is
+   an FX layer only: stamp dust and the confidence floaters. Nothing about the
+   game state is read from it, and the game is fully playable with it blank.
+   ========================================================================== */
+const fx=$("fx"), fxc=fx.getContext("2d");
+let W=0,H=0,DPR=1;
+function resize(){
+  W=Math.max(1,fx.clientWidth); H=Math.max(1,fx.clientHeight);
+  DPR=Math.min(window.devicePixelRatio||1, 2.5);
+  fx.width=Math.round(W*DPR); fx.height=Math.round(H*DPR);
+  fxc.setTransform(DPR,0,0,DPR,0,0);
+}
+function getMono(){ return 'ui-monospace,"Cascadia Code",Menlo,Consolas,monospace'; }
+/* where the stamp lands, in canvas space — used to aim the dust */
+function stampPoint(){
+  const s=$("stamp").getBoundingClientRect(), f=fx.getBoundingClientRect();
+  if(!s.width) return {x:W/2, y:H*0.45};
+  return { x:s.left-f.left+s.width/2, y:s.top-f.top+s.height/2 };
+}
+
+/* ============================================================================
+   6) PARTICLES + FLOATING TEXT (pooled)
+   --------------------------------------------------------------------------
+   Deliberately restrained: this is paper dust off a rubber stamp, not confetti.
+   No arcade juice anywhere in this build.
+   ========================================================================== */
+const particles=[]; const POOL_MAX=180;
+function spawnParticles(x,y,color,count,opts={}){
+  if(!motionOn()) count=Math.min(count,3);
+  for(let i=0;i<count;i++){
+    if(particles.length>=POOL_MAX) break;
+    const a=opts.angle!=null?opts.angle+rand(-.7,.7):rand(0,TAU);
+    const sp=rand(opts.spMin??18,opts.spMax??90);
+    particles.push({x:x+rand(-opts.spread??-14,opts.spread??14),y:y+rand(-6,6),
+      vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-(opts.lift||0),
+      life:rand(.5,1.0), max:1.0, size:rand(.9,2.3), color, g:opts.g??52});
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.life-=dt; if(p.life<=0){particles.splice(i,1);continue}
+    p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.955; p.vy*=.985;
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    fxc.globalAlpha=clamp(p.life/p.max,0,1)*.75; fxc.fillStyle=p.color;
+    fxc.beginPath(); fxc.arc(p.x,p.y,p.size,0,TAU); fxc.fill();
+  }
+  fxc.globalAlpha=1;
+}
+const floaters=[];
+function spawnFloater(x,y,text,color,big){ floaters.push({x,y,text,color,life:1.5,max:1.5,big:!!big}); }
+function updateFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=16*dt; if(f.life<=0) floaters.splice(i,1); }
+}
+function drawFloaters(){
+  fxc.textAlign="center";
+  for(const f of floaters){
+    fxc.globalAlpha=clamp(f.life/f.max,0,1);
+    fxc.font=(f.big?"800 20px ":"800 14px ")+getMono();
+    fxc.fillStyle="rgba(0,0,0,.55)"; fxc.fillText(f.text,f.x+1,f.y+1);
+    fxc.fillStyle=f.color; fxc.fillText(f.text,f.x,f.y);
+  }
+  fxc.globalAlpha=1;
+}
+
+/* ============================================================================
+   7) LEVEL DATA — THE DOCKETS
+   --------------------------------------------------------------------------
+   >>> THE P0 ACCEPTANCE CRITERION IS PROVABLE STRAIGHT OFF THIS TABLE. <<<
+   Each docket is built to an EXACT composition — not a probability — so the
+   override rates are identical on every run and a reviewer can verify them by
+   arithmetic as well as by running `__docket.overrideAudit()`.
+
+     firstCases / firstBail   : first-offence files (priors 0-1), and how many
+                                of them the settings rule BAIL on.
+     repeatCases / repeatBail : repeat-offence files (priors 2+), and how many
+                                of them the settings rule BAIL on.
+     priors                   : [min,max] prior-offence range for this docket's
+                                repeat files; spread evenly, so it is stable.
+
+   The ruling is a property of the CASE, fixed when the docket is built, before
+   the player sees anything. The player's call cannot change it. That is the
+   whole thesis, expressed as a data structure.
+
+   OVERRIDE RATE = bail / cases, per class:
+     Docket            first-offence      repeat-offence     gap
+     D1 First App.     1/7  = 14.3%       1/3  = 33.3%       +19.0
+     D2 Familiar       1/5  = 20.0%       4/6  = 66.7%       +46.7
+     D3 Same Names     1/4  = 25.0%       7/8  = 87.5%       +62.5
+     Bonus             0/4  =  0.0%       0/4  =  0.0%         0.0
+   Repeat-offence share also escalates: 30.0% -> 54.5% -> 66.7%.
+   ========================================================================== */
+const DOCKETS = [
+  { key:"d1", ...CONTENT.dockets.d1, firstCases:7, firstBail:1, repeatCases:3, repeatBail:1, priors:[2,3] },
+  { key:"d2", ...CONTENT.dockets.d2, firstCases:5, firstBail:1, repeatCases:6, repeatBail:4, priors:[3,6] },
+  { key:"d3", ...CONTENT.dockets.d3, firstCases:4, firstBail:1, repeatCases:8, repeatBail:7, priors:[5,9] },
+];
+const BONUS = { key:"bonus", ...CONTENT.dockets.bonus, firstCases:4, firstBail:0, repeatCases:4, repeatBail:0, priors:[2,6] };
+
+/* ---- Scoring constants ----------------------------------------------------
+   HARM: how much Business Confidence a REPEAT-OFFENCE RELEASE costs. It scales
+   with what is actually on the file, so a 9-priors car theft costs roughly
+   three times a 2-priors retail theft. A FIRST-OFFENCE release costs NOTHING,
+   ever, whatever the ruling — bail on a first appearance is not a harm and this
+   game will not pretend that it is.
+   RECOVERY: the bonus docket is the only place judgement is honoured, so it is
+   the only place judgement is rewarded: +1 per correct call, capped, never
+   above 100. It cannot rescue a blown run (see README).
+   -------------------------------------------------------------------------- */
+const HARM = { base:0.55, perPrior:0.50, perSeverity:0.75, perFlag:0.55 };
+const RECOVERY = { perCorrect:1, cap:8 };
+const REPEAT_AT = 2;   // priors >= REPEAT_AT  =>  a repeat-offence file
+
+/* ============================================================================
+   8) GAME STATE
+   ========================================================================== */
+const game = {
+  state:"loading",      // loading|title|howto|playing|bonus|transition|pause|results|form|leaderboard
+  docketIdx:0,
+  confidence:100,       // = the score. Continuous across all dockets. Starts at 100.
+  cases:[], caseIdx:0,  // the docket being worked
+  current:null,         // the case on the desk
+  phase:"deciding",     // deciding | ruled
+  // running tallies (the live docket-summary panel)
+  reviewed:0, overridden:0, upheld:0, waved:0, correct:0, recovered:0,
+  log:[],               // every resolution, for the audit hook
+  hitstop:0, timeScale:1,   // screen shake is a CSS one-shot (#desk.shake)
+  lastPlayerId:null, _pendingDocket:null, _resumeState:null,
+};
+function activeDef(){ return game.state==="bonus" ? BONUS : (DOCKETS[game.docketIdx]||DOCKETS[0]); }
+
+/* ---- Screen (DOM) management --------------------------------------------- */
+const SCREENS=["loading","title","howto","transition","pause","results","form","leaderboard"];
+function showScreen(name){ for(const s of SCREENS){ $("screen-"+s).classList.toggle("show", s===name); } }
+function hideAllScreens(){ for(const s of SCREENS) $("screen-"+s).classList.remove("show"); }
+function setDesk(on){ $("desk").classList.toggle("show", on); $("actions").classList.toggle("show", on);
+  $("hud").classList.toggle("show", on); $("t-pause").style.display=on?"grid":"none"; }
+function setFooter(on){ $("footer").classList.toggle("show", on); }
+function say(msg){ $("live").textContent=msg; }
+
+/* ============================================================================
+   9) CASE GENERATION + THE RULING SYSTEM
+   --------------------------------------------------------------------------
+   Every case is assembled from CONTENT and nothing else. `buildDocket` is the
+   only place a case is ever created, so the reviewer's audit surface is
+   CONTENT + this function.
+   ========================================================================== */
+let caseSeq = 0;
+function caseNumber(){ caseSeq=(caseSeq+7)%9000; return "CASE #"+(1000+caseSeq); }
+
+/* The harm a RELEASE of this file does to Business Confidence (0 for
+   first-offence). Rounded to 1dp at construction so the number the ruling panel
+   shows the player is EXACTLY the number applied to the meter — the score is
+   auditable to the decimal a reviewer can see on screen. */
+function harmOf(c){
+  if(c.cls!=="repeat") return 0;
+  const h = HARM.base + HARM.perPrior*c.priors + HARM.perSeverity*c.offence.severity
+          + HARM.perFlag*c.flags.length;
+  return Math.round(h*10)/10;
+}
+/* the correct call, from the prior-offence count. Readable straight off the card. */
+function correctCall(c){ return c.cls==="repeat" ? "remand" : "bail"; }
+
+function makeCase(priors, severity, withFlag, ruling){
+  // pick an offence of the required severity — variety in presentation, never in weight
+  const pool=CONTENT.offences.filter(o=>o.severity===severity);
+  const offence=choice(pool.length?pool:CONTENT.offences);
+  const note=CONTENT.notes[offence.label].replace("{place}", choice(CONTENT.places));
+  // The class is DERIVED from the prior-offence count printed on the card, so the
+  // card, the correct call, the harm and the audit can never disagree.
+  const c={ no:caseNumber(), offence, priors,
+    flags: withFlag ? [choice(CONTENT.flags)] : [],
+    note, cls: priors>=REPEAT_AT ? "repeat" : "first", ruling };
+  c.harm=harmOf(c);
+  return c;
+}
+
+function buildDocket(D){
+  const list=[];
+  // --- first-offence files: priors 0-1, and only minor/mid offences, so that
+  //     "bail is the right call here" is never a stretch on the card.
+  for(let i=0;i<D.firstCases;i++){
+    list.push(makeCase(i%2, i%2, false, i<D.firstBail ? "bail" : "remand"));
+  }
+  // --- repeat-offence files: priors spread evenly across the docket's range so
+  //     the docket's weight is stable run to run; severity cycles 0,1,2 so the
+  //     average is stable too; exactly floor(k/2) carry a flag.
+  const k=D.repeatCases, [pMin,pMax]=D.priors, flagged=Math.floor(k/2);
+  for(let i=0;i<k;i++){
+    const priors=Math.round(k>1 ? lerp(pMin,pMax,i/(k-1)) : pMin);
+    list.push(makeCase(priors, i%3, i<flagged, i<D.repeatBail ? "bail" : "remand"));
+  }
+  return shuffled(list);     // presentation order only — the composition is fixed
+}
+
+/* ---- THE RULING ----------------------------------------------------------
+   The settings only ever move an outcome ONE way: toward release. A bail
+   application the prosecution does not oppose is granted; a remand application
+   is granted only if the case's own ruling allows it. So asking for remand is
+   the only lever the player has, and the case decides whether it works.
+   -------------------------------------------------------------------------- */
+function rulingFor(c, call){ return call==="bail" ? "bail" : c.ruling; }
+
+/* the outcome kind — one of five, each with its own copy, colour, icon + label */
+function outcomeKind(c, call, ruling){
+  if(call==="remand" && ruling==="remand") return "upheld";
+  if(call==="remand" && ruling==="bail")   return c.cls==="repeat" ? "override" : "override_minor";
+  return c.cls==="repeat" ? "waved" : "granted";
+}
+
+/* ---- Icons. Colour is NEVER the only signal — every one of these ships
+   alongside a text label, on every surface. ------------------------------- */
+const ICONS = {
+  lock:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h6V7a3 3 0 0 0-6 0zm3 5a1.6 1.6 0 0 0-.8 3v1.6a.8.8 0 0 0 1.6 0V18a1.6 1.6 0 0 0-.8-3z"/></svg>',
+  revolve:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 1 0-2.2 5.4"/><path d="M20 5.5v6h-6"/></svg>',
+  biz:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 21V9l5-3 5 3v3h8v9zm2-2h4v-3H5zm0-5h4v-3H5zm6 5h3v-3h-3zm0-5h3v-3h-3zm5 5h3v-3h-3zm0-5h3v-3h-3z"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20m0 4.5a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6M11 11h2v6.5h-2z"/></svg>',
+  flag:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 21V3h2v1.6l9.5-1.3-2 4.2 2 4.2L7 10.4V21z"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2h8l4 4v16H6zm8 1.5V7h3.5zM8 11h8v2H8zm0 4h8v2H8z"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 5 5 9-11"/></svg>',
+};
+
+/* ============================================================================
+   10) FLOW / STATE TRANSITIONS
+   ========================================================================== */
+function goTitle(){
+  game.state="title"; hideAllScreens(); showScreen("title"); setDesk(false); setFooter(true);
+}
+function goHowTo(){ game.state="howto"; showScreen("howto"); setFooter(false); }
+
+function startRun(){
+  game.confidence=100; game.docketIdx=0; game.lastPlayerId=null;
+  game.reviewed=0; game.overridden=0; game.upheld=0; game.waved=0; game.correct=0; game.recovered=0;
+  game.log=[]; particles.length=0; floaters.length=0;
+  beginDocket(0);
+}
+function beginDocket(idx){
+  resize();
+  game.docketIdx=idx; const D=DOCKETS[idx];
+  game.state="playing";
+  game.cases=buildDocket(D); game.caseIdx=0; game.timeScale=1;
+  hideAllScreens(); setDesk(true); setFooter(false); $("ruling").classList.remove("show");
+  $("hud-docket").innerHTML=`Docket ${idx+1}<b> · ${esc(D.name)}</b>`;
+  updateHUD();
+  say(`Docket ${idx+1}. ${D.name}. ${D.desc} ${game.cases.length} cases. Nothing is timed.`);
+  Sound.docket();
+  nextCase();
+}
+function beginBonus(){
+  resize();
+  game.state="bonus";
+  game.cases=buildDocket(BONUS); game.caseIdx=0; game.timeScale=1;
+  hideAllScreens(); setDesk(true); setFooter(false); $("ruling").classList.remove("show");
+  $("hud-docket").innerHTML=`Bonus<b> · ${esc(BONUS.name)}</b>`;
+  updateHUD();
+  say(`Bonus docket. ${BONUS.name}. ${BONUS.desc}`);
+  Sound.docket();
+  nextCase();
+}
+function endDocket(){
+  const next=game.docketIdx+1;
+  if(next<DOCKETS.length) showTransition(next); else beginBonus();
+}
+function showTransition(nextIdx){
+  game.state="transition"; setDesk(false); hideAllScreens(); showScreen("transition");
+  const D=DOCKETS[nextIdx];
+  $("tr-eyebrow").textContent="Docket "+(nextIdx+1);
+  $("tr-name").textContent=D.name; $("tr-desc").textContent=D.desc;
+  $("tr-carry").textContent=Math.round(game.confidence);
+  $("tr-note").textContent=`${game.overridden} of your remand calls overridden so far.`;
+  game._pendingDocket=nextIdx;
+  say(`${D.name}. Business confidence ${Math.round(game.confidence)} of 100. ${game.overridden} remand calls overridden so far.`);
+}
+function finish(){
+  game.state="results"; setDesk(false); setFooter(true); hideAllScreens();
+  $("ruling").classList.remove("show");
+  renderResults(); showScreen("results");
+  if(game.confidence>=50) Sound.win(); else Sound.lose();
+}
+
+function nextCase(){
+  if(game.caseIdx>=game.cases.length){
+    return game.state==="bonus" ? finish() : endDocket();
+  }
+  game.current=game.cases[game.caseIdx];
+  game.phase="deciding";
+  $("ruling").classList.remove("show");
+  $("stamp").className=""; $("stamp-txt").innerHTML=""; $("stamp-sub").textContent="";
+  renderCase(game.current);
+  setCallsEnabled(true);
+  updateHUD();
+  Sound.deal();
+}
+
+/* ============================================================================
+   11) INPUT — tap-to-choose is PRIMARY. Drag is an optional affordance on top.
+   Fully keyboard-playable. Nothing here is timed.
+   ========================================================================== */
+function setCallsEnabled(on){
+  $("btn-remand").disabled=!on; $("btn-bail").disabled=!on;
+  $("btn-remand").classList.remove("armed"); $("btn-bail").classList.remove("armed");
+}
+function canDecide(){ return (game.state==="playing"||game.state==="bonus") && game.phase==="deciding" && !!game.current; }
+
+$("btn-remand").onclick=()=>{ Sound.init(); resolveCase("remand"); };
+$("btn-bail").onclick=()=>{ Sound.init(); resolveCase("bail"); };
+$("btn-next").onclick=()=>{ advance(); };
+
+/* --- drag the file: left = Remand, right = Bail. Optional; tap always works. */
+const fileEl=$("file");
+let dragId=null, dragX0=0, dragDX=0, dragging=false;
+const DRAG_COMMIT=64;
+function dragTo(dx){
+  dragDX=dx;
+  const rot=-0.5 + clamp(dx/22,-7,7);
+  fileEl.style.transform=`translateX(${dx}px) rotate(${rot}deg)`;
+  const armR=dx<=-DRAG_COMMIT, armB=dx>=DRAG_COMMIT;
+  $("pull-l").classList.toggle("on", dx<-14); $("pull-r").classList.toggle("on", dx>14);
+  $("btn-remand").classList.toggle("armed", armR); $("btn-bail").classList.toggle("armed", armB);
+}
+function dragEnd(commit){
+  fileEl.classList.remove("dragging"); dragging=false; dragId=null;
+  $("pull-l").classList.remove("on"); $("pull-r").classList.remove("on");
+  fileEl.style.transform="";
+  const dx=dragDX; dragDX=0;
+  setCallsEnabled(canDecide());
+  if(!commit) return;
+  if(dx<=-DRAG_COMMIT) resolveCase("remand");
+  else if(dx>=DRAG_COMMIT) resolveCase("bail");
+}
+fileEl.addEventListener("pointerdown",e=>{
+  if(!canDecide()||dragId!==null) return;
+  Sound.init(); dragId=e.pointerId; dragX0=e.clientX; dragging=true;
+  fileEl.classList.add("dragging"); fileEl.setPointerCapture(e.pointerId);
+});
+fileEl.addEventListener("pointermove",e=>{
+  if(dragId!==e.pointerId||!dragging) return;
+  dragTo(e.clientX-dragX0); e.preventDefault();
+});
+fileEl.addEventListener("pointerup",e=>{ if(dragId===e.pointerId) dragEnd(true); });
+fileEl.addEventListener("pointercancel",e=>{ if(dragId===e.pointerId) dragEnd(false); });
+
+window.addEventListener("keydown",e=>{
+  Sound.init();
+  const k=e.key.toLowerCase();
+  if(k==="escape"){
+    if(game.state==="playing"||game.state==="bonus") pauseGame();
+    else if(game.state==="pause") resumeGame();
+    return;
+  }
+  if(game.state==="title" && k==="enter"){ startRun(); return; }
+  if(game.state==="transition" && (k==="enter"||k===" ")){ e.preventDefault(); $("btn-transition").click(); return; }
+  if(game.phase==="ruled" && (game.state==="playing"||game.state==="bonus")){
+    if(k==="enter"||k===" "||k==="n"){ e.preventDefault(); advance(); }
+    return;
+  }
+  if(!canDecide()) return;
+  if(k==="r"||k==="arrowleft"){ e.preventDefault(); resolveCase("remand"); }
+  if(k==="b"||k==="arrowright"){ e.preventDefault(); resolveCase("bail"); }
+});
+
+function pauseGame(){
+  if(game.state!=="playing"&&game.state!=="bonus") return;
+  game._resumeState=game.state; game.state="pause"; setDesk(false); showScreen("pause");
+}
+function resumeGame(){
+  if(game.state!=="pause") return;
+  game.state=game._resumeState||"playing"; hideAllScreens(); setDesk(true);
+}
+
+/* ============================================================================
+   12) UPDATE  —  THE SINGLE SCORING PATH
+   --------------------------------------------------------------------------
+   Every outcome in the game — tap, drag, keyboard, and every debug pilot —
+   routes through resolveCase(). Nothing else may write game.confidence.
+   ========================================================================== */
+function resolveCase(call){
+  if(!canDecide()) return null;
+  const c=game.current;
+  const ruling=rulingFor(c, call);
+  const kind=outcomeKind(c, call, ruling);
+  const isCorrect=(call===correctCall(c));
+
+  let delta=0;
+  if(kind==="override" || kind==="waved") delta = -c.harm;
+  // The bonus docket is the only place a call is honoured, so it is the only
+  // place judgement is rewarded. Capped, and never above 100.
+  if(game.state==="bonus" && isCorrect){
+    const amt=Math.min(RECOVERY.perCorrect, RECOVERY.cap-game.recovered, 100-game.confidence);
+    if(amt>0){ delta+=amt; game.recovered+=amt; }
+  }
+  game.confidence=clamp(game.confidence+delta, 0, 100);
+
+  game.reviewed++;
+  if(isCorrect) game.correct++;
+  if(kind==="upheld") game.upheld++;
+  if(kind==="override"||kind==="override_minor") game.overridden++;
+  if(kind==="waved") game.waved++;
+  game.log.push({ docket:activeDef().key, cls:c.cls, priors:c.priors,
+    severity:c.offence.severity, call, ruling, kind, delta:+delta.toFixed(2), correct:isCorrect });
+
+  game.phase="ruled";
+  setCallsEnabled(false);
+  presentRuling(c, call, ruling, kind, delta);
+  return { kind, ruling, delta:+delta.toFixed(2), confidence:Math.round(game.confidence) };
+}
+
+/* `immediate` skips the deal-out animation — used by the debug pilots so a run
+   completes synchronously. It takes the same flow path either way. */
+function advance(immediate){
+  if(game.phase!=="ruled") return;
+  game.caseIdx++;
+  if(!immediate && motionOn()){
+    fileEl.classList.add("away");
+    setTimeout(()=>{ fileEl.classList.remove("away"); nextCase(); }, 190);
+  } else { fileEl.classList.remove("away"); nextCase(); }
+}
+
+function update(dt){
+  updateParticles(dt); updateFloaters(dt);
+}
+
+/* ============================================================================
+   13) RENDER — the case file (DOM) + the ruling (DOM) + the FX layer (canvas)
+   ========================================================================== */
+function renderCase(c){
+  $("f-caseno").textContent=c.no;
+  $("f-illus").innerHTML=ICONS.info+"<span>"+esc(CONTENT.illustrativeLabel)+"</span>";
+  $("f-offence").textContent=c.offence.label;
+  $("f-sev").textContent=c.offence.sevLabel;
+  $("f-note").textContent=c.note;
+  $("f-priors-n").textContent=c.priors;
+  $("f-priors").classList.toggle("repeat", c.cls==="repeat");
+  $("f-priors-l").innerHTML = c.priors===1 ? "Prior offence<br />on this file" : "Prior offences<br />on this file";
+  const fl=$("f-flags"); fl.innerHTML="";
+  for(const f of c.flags){
+    const li=document.createElement("li"); li.innerHTML=ICONS.flag+"<span>"+esc(f)+"</span>"; fl.appendChild(li);
+  }
+  if(motionOn()){ fileEl.classList.remove("deal"); void fileEl.offsetWidth; fileEl.classList.add("deal"); }
+  const flagTxt=c.flags.length?` Flag: ${c.flags[0]}.`:"";
+  say(`Case ${game.caseIdx+1} of ${game.cases.length}. ${c.offence.label}. ${c.offence.sevLabel}. `+
+      `${c.priors} prior ${c.priors===1?"offence":"offences"} on file.${flagTxt} ${CONTENT.illustrativeLabel}. Remand or bail?`);
+}
+
+/* the five presentations. Each is colour + icon + text label, never colour alone. */
+function presentRuling(c, call, ruling, kind, delta){
+  const st=$("stamp"), r=$("ruling"), bonus=(game.state==="bonus");
+  const heavy=(kind==="override"||kind==="waved");
+  const p=c.priors, pw=`${p} prior ${p===1?"offence":"offences"}`;
+
+  // --- the stamp: the emotional centre. Every bail outcome gets BAIL GRANTED;
+  //     only the consequential ones land hard.
+  if(ruling==="bail"){
+    st.className="bail show"+(heavy?"":" quiet")+(motionOn()?" thud":"");
+    $("stamp-txt").innerHTML=ICONS.revolve+"<span>BAIL GRANTED</span>";
+    $("stamp-sub").textContent = kind==="override" ? "REMAND REFUSED"
+                               : kind==="waved" ? "UNOPPOSED"
+                               : kind==="override_minor" ? "REMAND REFUSED" : "AS SOUGHT";
+  } else {
+    st.className="custody show"+(motionOn()?" thud":"");
+    $("stamp-txt").innerHTML=ICONS.lock+"<span>CUSTODY</span>";
+    $("stamp-sub").textContent="REMANDED";
+  }
+
+  let verdict, tag, body, tone, icon;
+  if(kind==="upheld"){
+    tone="good"; icon=ICONS.lock; verdict="Remand granted."; tag="CUSTODY — YOUR CALL STANDS";
+    body = bonus ? `Your call is the ruling here. The file stays in custody until court.`
+                 : `The file stays in custody until court. <b>On this one, the settings agreed with you.</b>`;
+  } else if(kind==="override"){
+    tone="bad"; icon=ICONS.revolve; verdict="Bail granted."; tag="YOUR REMAND CALL — OVERRIDDEN";
+    body = `You asked for remand on a file carrying <b>${pw}</b>. Under the current settings, ` +
+           `bail was granted anyway. <b>Nothing you wrote on this sheet could have changed that.</b>`;
+  } else if(kind==="override_minor"){
+    tone="flat"; icon=ICONS.revolve; verdict="Bail granted."; tag="REMAND REFUSED — NO COST";
+    body = `A first appearance on a minor matter. Your call and the ruling differ — but ` +
+           `<b>bail here is unremarkable</b>, and business confidence does not move.`;
+  } else if(kind==="granted"){
+    tone="flat"; icon=ICONS.check; verdict="Bail granted."; tag="AS YOU ASKED — CORRECT CALL";
+    body = `A first appearance on a minor matter. <b>Bail is the right call here</b>, and the ruling agrees.`;
+  } else { /* waved */
+    tone="bad"; icon=ICONS.revolve; verdict="Bail granted."; tag="UNOPPOSED — YOUR CALL";
+    body = bonus
+      ? `A file carrying <b>${pw}</b> is back out, because you said so. <b>In this docket there is nobody else to blame.</b>`
+      : `Nobody opposed bail on a file carrying <b>${pw}</b>, because you didn't. <b>This one is yours.</b>`;
+  }
+
+  r.className=tone+" show";
+  $("r-icon").innerHTML=icon;
+  $("r-verdict").textContent=verdict;
+  $("r-tag").textContent=tag;
+  $("r-body").innerHTML=body;
+  const dEl=$("r-delta");
+  if(delta<0){ dEl.className="val down"; dEl.textContent="−"+Math.abs(delta).toFixed(1); }
+  else if(delta>0){ dEl.className="val up"; dEl.textContent="+"+delta.toFixed(1); }
+  else { dEl.className="val zero"; dEl.textContent="No change"; }
+  $("btn-next").textContent = (game.caseIdx>=game.cases.length-1) ? "Close the docket" : "Next case";
+
+  // --- feel. Restrained: a stamp thud, paper dust, a slow meter. No juice.
+  const pt=stampPoint();
+  if(heavy){
+    Sound.stampHard();
+    if(motionOn()){
+      $("desk").classList.remove("shake"); void $("desk").offsetWidth; $("desk").classList.add("shake");
+      $("flash").classList.remove("go"); void $("flash").offsetWidth; $("flash").classList.add("go");
+      game.hitstop=0.04;
+    }
+    spawnParticles(pt.x,pt.y,COL.redDeep, motionOn()?14:3, {spMin:20,spMax:95,lift:16,spread:26});
+    spawnFloater(pt.x, pt.y+34, "−"+Math.abs(delta).toFixed(1), COL.red, true);
+    $("hud-over").classList.remove("bump"); void $("hud-over").offsetWidth; $("hud-over").classList.add("bump");
+  } else if(ruling==="bail"){
+    Sound.stampSoft();
+    spawnParticles(pt.x,pt.y,COL.manilaEdge, motionOn()?5:2, {spMin:10,spMax:40,lift:8,spread:20});
+  } else {
+    Sound.upheld();
+    spawnParticles(pt.x,pt.y,COL.greenDeep, motionOn()?6:2, {spMin:10,spMax:45,lift:10,spread:20});
+  }
+  if(delta>0) spawnFloater(pt.x, pt.y+34, "+"+delta.toFixed(1), COL.green, false);
+
+  updateHUD();
+  const money = delta<0 ? `Business confidence down ${Math.abs(delta).toFixed(1)}.`
+              : delta>0 ? `Business confidence up ${delta.toFixed(1)}.` : `Business confidence unchanged.`;
+  say(`${tag}. ${verdict} ${money} Now ${Math.round(game.confidence)} of 100.`);
+}
+
+function updateHUD(){
+  const v=Math.round(game.confidence);
+  $("hud-bc").innerHTML=`${v}<small>/100</small>`;
+  $("hud-bc-label").innerHTML=ICONS.biz+"<span>Business confidence</span>";
+  const fill=$("hud-fill"); fill.style.width=game.confidence+"%";
+  fill.classList.toggle("low", game.confidence<40);
+  $("hud-held").innerHTML=ICONS.lock+"<span>"+game.upheld+" held</span>";
+  $("hud-over").innerHTML=ICONS.revolve+"<span>"+game.overridden+" overridden</span>";
+  const prog=clamp(game.caseIdx/Math.max(1,game.cases.length),0,1);
+  $("hud-progress").style.width=(prog*100)+"%";
+}
+
+function render(){
+  fxc.clearRect(0,0,W,H);
+  drawParticles(); drawFloaters();
+}
+
+/* one-shot animation classes clean themselves up, so no element carries stale
+   state once its animation has played */
+for(const [id,cls] of [["desk","shake"],["flash","go"],["stamp","thud"],["hud-over","bump"]]){
+  $(id).addEventListener("animationend", e=>{ if(e.target===$(id)) $(id).classList.remove(cls); });
+}
+
+/* ============================================================================
+   14) MAIN LOOP (fixed timestep)
+   --------------------------------------------------------------------------
+   The docket itself is untimed and event-driven — this loop drives only the FX
+   layer and the hitstop. No timer can ever decide a case for the player.
+   ========================================================================== */
+new ResizeObserver(resize).observe($("field"));
+window.addEventListener("resize",resize);
+resize();
+
+let last=performance.now(), acc=0; const STEP=1/60;
+function frame(t){
+  if(fx.clientWidth!==W||fx.clientHeight!==H) resize();
+  let dt=(t-last)/1000; last=t; if(dt>0.1) dt=0.1;
+  if(game.hitstop>0){ game.hitstop-=dt; }
+  else { acc+=dt*game.timeScale; let n=0; while(acc>=STEP && n<5){ update(STEP); acc-=STEP; n++; } if(acc>STEP*5) acc=0; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================================
+   15) RESULTS + LEADERBOARD
+   ========================================================================== */
+function verdictFor(score, correct, reviewed, overridden, waved){
+  if(reviewed===0) return "No calls made.";
+  if(correct===reviewed)
+    return `Not one call you made was wrong — and you still finished at ${score}. ` +
+           `Every point you lost, you lost to a ruling you asked not to happen.`;
+  if(waved===0)
+    return `You never released a repeat-offence file yourself. ${overridden} ` +
+           `${overridden===1?"time":"times"}, it happened anyway.`;
+  if(waved<=3)
+    return `Mostly the right calls — and ${overridden} of them overridden regardless. ` +
+           `A few you waved through yourself.`;
+  if(correct/reviewed>=0.45)
+    return `You let a lot of the repeat files out yourself. The settings barely had to help.`;
+  return `You bailed the repeat offenders and remanded the first-timers. ` +
+         `The settings could hardly have done more damage without you.`;
+}
+function renderResults(){
+  const score=Math.round(game.confidence);
+  const el=$("res-score"); const dur=motionOn()?900:0, t0=performance.now();
+  (function tick(now){
+    const p=dur?clamp((now-t0)/dur,0,1):1;
+    el.textContent=Math.round(easeOutCubic(p)*score);
+    if(p<1) requestAnimationFrame(tick);
+  })(t0);
+
+  $("res-verdict").textContent=verdictFor(score, game.correct, game.reviewed, game.overridden, game.waved);
+  // the headline override number — the "concrete, memorable number" user story
+  const remandCalls=game.log.filter(e=>e.call==="remand").length;
+  const pct=remandCalls?Math.round(100*game.overridden/remandCalls):0;
+  $("res-over").textContent=game.overridden;
+  $("res-over-t").innerHTML=`remand ${game.overridden===1?"call":"calls"} overridden to bail` +
+    `<small>${remandCalls?`${pct}% of the ${remandCalls} remand ${remandCalls===1?"call":"calls"} you made`:"you made no remand calls"}</small>`;
+  $("res-cases").textContent=game.reviewed;
+  $("res-held").textContent=game.upheld;
+  $("res-calls").textContent=game.correct+"/"+game.reviewed;
+
+  const c=CONTENT.citation;
+  $("res-citation").innerHTML =
+    `<span class="pending">${esc(c.figure)}</span> ${esc(c.framing)}` +
+    `<span class="src">Source: ${esc(c.source)} · ${esc(c.date)} · Legal sign-off: ${esc(c.signoff)}</span>`;
+  $("res-disclaimer").innerHTML="<strong>Disclaimer.</strong> "+esc(CONTENT.disclaimer);
+  say(`Docket closed. Business confidence ${score} of 100. ${game.reviewed} cases reviewed, ` +
+      `${game.overridden} of your remand calls overridden to bail, ${game.upheld} remands upheld, ` +
+      `${game.correct} of ${game.reviewed} calls correct.`);
+}
+
+/* ---- Leaderboard store: LOCAL now, REMOTE (Cloudflare) later --------------
+   Swap point for launch: implement RemoteLeaderboard against a serverless
+   endpoint (Cloudflare Pages Function + D1) and flip USE_REMOTE. PII stays
+   server-side there; this local store keeps data on-device only (demo mode).
+   -------------------------------------------------------------------------- */
+const USE_REMOTE=false;
+const LocalLeaderboard={
+  KEY:"cr_docket_lb_v1",
+  all(){ return store.get(this.KEY,[]) || []; },
+  async top(n=10){ return this.all().slice(0,n); },
+  async submit(entry){
+    const list=this.all();
+    const rec={ id:(performance.now()+"_"+Math.random()).toString(),
+      first:entry.first, postcode:entry.postcode, score:entry.score,
+      overrides:entry.overrides, ts:Date.now(),
+      _last:entry.last, _email:entry.email };   // private fields — on-device only
+    list.push(rec); list.sort((a,b)=>b.score-a.score);
+    const rank=list.findIndex(r=>r.id===rec.id)+1;
+    store.set(this.KEY, list.slice(0,100));
+    return { rank, id:rec.id, total:list.length };
+  },
+};
+const Leaderboard = USE_REMOTE ? null /* RemoteLeaderboard (launch) */ : LocalLeaderboard;
+
+async function renderLeaderboard(){
+  const rows=await Leaderboard.top(10);
+  const list=$("lb-list"); list.innerHTML="";
+  if(!rows.length) list.innerHTML='<div class="lb-empty">No scores yet — you could be first.</div>';
+  rows.forEach((r,i)=>{
+    const div=document.createElement("div");
+    div.className="lb-row"+(r.id===game.lastPlayerId?" me":"");
+    div.innerHTML=`<span class="rank">${i+1}</span>`+
+      `<span class="who">${esc(r.first||"Player")}<small>Postcode ${esc(r.postcode||"—")}` +
+      `${r.overrides!=null?` · ${r.overrides} overridden`:""}</small></span>`+
+      `<span class="sc">${Math.round(r.score)}</span>`;
+    list.appendChild(div);
+  });
+  $("lb-note").textContent = USE_REMOTE ? "" :
+    "Scores are saved on this device (demo mode). A shared board is enabled at launch.";
+}
+
+/* ============================================================================
+   16) UI WIRING
+   ========================================================================== */
+$("framing-fact").textContent=CONTENT.framingFact;
+$("framing-plan").textContent=CONTENT.framingPlan;
+$("foot-auth").textContent=CONTENT.authorisation;
+$("foot-disclaimer").textContent=CONTENT.disclaimer;
+$("form-privacy").textContent=CONTENT.privacy;
+$("consent-label").textContent=CONTENT.consentLabel;
+$("lg-read-p").textContent=CONTENT.howtoFiction;
+$("lg-twist").innerHTML="<strong style='color:var(--paper)'>"+esc(CONTENT.howtoTwist)+"</strong>";
+$("btn-donate").href=CONTENT.donateUrl; $("btn-donate2").href=CONTENT.donateUrl;
+$("btn-policy").href=CONTENT.policyUrl; $("btn-policy2").href=CONTENT.policyUrl;
+$("ic-remand").innerHTML=ICONS.lock; $("ic-bail").innerHTML=ICONS.revolve;
+$("lg-read").innerHTML=ICONS.file; $("lg-remand").innerHTML=ICONS.lock; $("lg-bail").innerHTML=ICONS.revolve;
+$("r-delta-lbl").innerHTML=ICONS.biz+"<span>Business confidence</span>";
+// the business-impact figure lives on the docket transition — also PENDING.
+(function(){ const b=CONTENT.citationBusiness;
+  $("tr-desc").insertAdjacentHTML("afterend",
+    `<div class="attributed" style="font-size:11.5px;text-align:left">` +
+    `<span class="pending">${esc(b.figure)}</span> ${esc(b.framing)}` +
+    `<span class="src">Source: ${esc(b.source)} · ${esc(b.date)}</span></div>`);
+})();
+
+$("btn-play").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-how").onclick=goHowTo;
+$("btn-how-start").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-transition").onclick=()=>{ if(game._pendingDocket!=null) beginDocket(game._pendingDocket); };
+$("btn-resume").onclick=resumeGame;
+$("btn-restart").onclick=()=>{ hideAllScreens(); startRun(); };
+$("t-pause").onclick=()=>{ game.state==="pause"?resumeGame():pauseGame(); };
+$("btn-replay").onclick=startRun;
+$("btn-replay2").onclick=startRun;
+$("btn-leaderboard").onclick=()=>{ game.state="form"; hideAllScreens(); showScreen("form"); setFooter(false); $("f-first").focus(); };
+$("btn-skip").onclick=async()=>{ game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true); };
+
+$("btn-share").onclick=async()=>{
+  const score=Math.round(game.confidence);
+  const text=CONTENT.shareText(score, game.overridden);
+  const url=location.href.split("#")[0];
+  try{
+    if(navigator.share) await navigator.share({title:"Catch and Release — The Docket",text,url});
+    else { await navigator.clipboard.writeText(text+" "+url); toast("Link copied"); }
+  }catch{}
+};
+
+$("lead-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const first=$("f-first").value.trim(), last=$("f-last").value.trim(),
+        email=$("f-email").value.trim(), postcode=$("f-postcode").value.trim(),
+        consent=$("f-consent").checked, hp=$("f-website").value;
+  let ok=true;
+  const setErr=(id,inp,msg)=>{ $(id).textContent=msg||""; if(inp) $(inp).setAttribute("aria-invalid", msg?"true":"false"); if(msg) ok=false; };
+  setErr("e-first","f-first", first?"":"Enter your first name");
+  setErr("e-last","f-last", last?"":"Enter your last name");
+  setErr("e-email","f-email", /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?"":"Enter a valid email");
+  setErr("e-postcode","f-postcode", /^\d{4}$/.test(postcode)?"":"Enter a 4-digit postcode");
+  setErr("e-consent",null, consent?"":"Please tick to continue");
+  if(hp) return;                       // honeypot
+  if(!ok) return;
+  const res=await Leaderboard.submit({first,last,email,postcode,
+    score:Math.round(game.confidence), overrides:game.overridden});
+  game.lastPlayerId=res.id;
+  game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true);
+  say(`You ranked number ${res.rank} of ${res.total}.`);
+});
+
+function toast(msg){
+  const t=document.createElement("div"); t.textContent=msg;
+  t.style.cssText="position:absolute;left:50%;bottom:80px;transform:translateX(-50%);z-index:20;"+
+    "background:rgba(10,15,26,.96);border:1px solid var(--card-brd);color:var(--paper);"+
+    "padding:10px 16px;border-radius:10px;font:600 13px var(--font)";
+  $("field").appendChild(t); setTimeout(()=>t.remove(),1600);
+}
+
+/* ---- Toggles -------------------------------------------------------------- */
+const TICONS={
+  soundOn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"/></svg>',
+  soundOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 5m0-5-5 5"/></svg>',
+  motion:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+  contrast:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+};
+function applyToggles(){
+  document.documentElement.setAttribute("data-motion", settings.motion);
+  document.documentElement.setAttribute("data-contrast", settings.contrast?"on":"off");
+  const s=$("t-sound"); s.innerHTML=settings.sound?TICONS.soundOn:TICONS.soundOff;
+  s.setAttribute("aria-pressed",settings.sound); s.title="Sound ("+(settings.sound?"on":"off")+")";
+  const m=$("t-motion"); m.innerHTML=TICONS.motion; m.setAttribute("aria-pressed", settings.motion==="off");
+  m.title=(motionOn()?"Reduce motion":"Motion reduced");
+  const c=$("t-contrast"); c.innerHTML=TICONS.contrast; c.setAttribute("aria-pressed",settings.contrast);
+  c.title="High contrast ("+(settings.contrast?"on":"off")+")";
+  $("t-pause").innerHTML=TICONS.pause;
+}
+$("t-sound").onclick=()=>{ settings.sound=!settings.sound; store.set("cr_sound",settings.sound); if(settings.sound){Sound.init();Sound.upheld();} applyToggles(); };
+$("t-motion").onclick=()=>{ settings.motion=motionOn()?"off":"on"; store.set("cr_motion",settings.motion); applyToggles(); };
+$("t-contrast").onclick=()=>{ settings.contrast=!settings.contrast; store.set("cr_contrast",settings.contrast); applyToggles(); };
+applyToggles();
+
+/* ============================================================================
+   16b) TEST HOOK — inert in production; only active with ?debug or #debug.
+   --------------------------------------------------------------------------
+   Every pilot drives the REAL scoring path (resolveCase) and the REAL flow
+   (advance / beginDocket). No pilot writes game.confidence directly, so what
+   these numbers prove, the game actually does.
+   ========================================================================== */
+if(new URLSearchParams(location.search).has("debug") || location.hash==="#debug"){
+  const STRATEGIES={
+    perfect:      c => correctCall(c),
+    inverted:     c => correctCall(c)==="remand" ? "bail" : "remand",
+    blanketRemand:() => "remand",
+    blanketBail:  () => "bail",
+    random:       () => Math.random()<0.5 ? "remand" : "bail",
+  };
+  window.__docket = {
+    game, DOCKETS, BONUS, HARM, RECOVERY, CONTENT, STRATEGIES,
+    step(dt=1/60){ update(dt); render(); },
+    play(){ startRun(); },
+    decide(call){ return resolveCase(call); },
+    next(){ advance(true); },
+
+    /* drive a whole run (3 dockets + bonus) with a decision strategy */
+    run(strategy, maxSteps=400){
+      const fn = typeof strategy==="string" ? STRATEGIES[strategy] : strategy;
+      if(!fn) throw new Error("unknown strategy: "+strategy);
+      startRun(); let n=0;
+      while(game.state!=="results" && n++<maxSteps){
+        if(game.state==="transition"){ beginDocket(game._pendingDocket); continue; }
+        if(game.state!=="playing" && game.state!=="bonus") break;
+        if(game.phase==="deciding") resolveCase(fn(game.current));
+        else if(game.phase==="ruled") advance(true);
+      }
+      return this.report(n);
+    },
+    report(steps){
+      return { state:game.state, score:Math.round(game.confidence),
+        exact:+game.confidence.toFixed(2), reviewed:game.reviewed,
+        overridden:game.overridden, upheld:game.upheld, waved:game.waved,
+        correct:game.correct, recovered:game.recovered, steps };
+    },
+
+    /* the perfect run: correct call on every single case */
+    autopilot(){ return this.run("perfect"); },
+    /* the worst run: the wrong call on every single case */
+    failpilot(){ return this.run("inverted"); },
+    /* never decides. Proves there is no timer and no passive loss (PRD: untimed,
+       no fail state — the docket simply waits). */
+    idlepilot(steps=20000){
+      startRun();
+      const c0=game.confidence, case0=game.current && game.current.no;
+      for(let i=0;i<steps;i++) update(1/60);
+      return { state:game.state, score:Math.round(game.confidence),
+        decided:game.reviewed, confidenceDrift:+(game.confidence-c0).toFixed(4),
+        stillOnSameCase: !!game.current && game.current.no===case0, steps,
+        note:"Untimed by design (PRD): no timeout, no passive loss, nothing decides for you." };
+    },
+
+    /* ---- THE P0 PROOF -------------------------------------------------------
+       Calls REMAND on every case (so every case's ruling is exercised) and
+       measures the ACTUAL override rate for first-offence vs repeat-offence
+       files, per docket. This is a measurement, not an assertion.
+       ---------------------------------------------------------------------- */
+    overrideAudit(runs=20){
+      const acc={};
+      for(let r=0;r<runs;r++){
+        this.run("blanketRemand");
+        for(const e of game.log){
+          acc[e.docket] ??= { first:{n:0,bail:0}, repeat:{n:0,bail:0} };
+          const b=acc[e.docket][e.cls]; b.n++; if(e.ruling==="bail") b.bail++;
+        }
+      }
+      const out={};
+      for(const k of Object.keys(acc)){
+        const f=acc[k].first, rp=acc[k].repeat;
+        const fr=100*f.bail/f.n, rr=100*rp.bail/rp.n;
+        out[k]={ firstOffenceOverrideRate:+fr.toFixed(1), repeatOffenceOverrideRate:+rr.toFixed(1),
+          gap:+(rr-fr).toFixed(1), repeatShare:+(100*rp.n/(f.n+rp.n)).toFixed(1),
+          samples:{first:f.n, repeat:rp.n} };
+      }
+      out._runs=runs;
+      out._pass = ["d1","d2","d3"].every(k=>out[k] && out[k].repeatOffenceOverrideRate > out[k].firstOffenceOverrideRate);
+      return out;
+    },
+
+    /* the score gradient — proves better judgement beats worse judgement.
+       Every strategy except `random` is fully deterministic (the dockets are
+       built to an exact composition), so runs=1 is already exact for those. */
+    gradient(runs=3){
+      const out={};
+      for(const name of Object.keys(STRATEGIES)){
+        let s=0, o=0;
+        for(let i=0;i<runs;i++){ const r=this.run(name); s+=r.exact; o+=r.overridden; }
+        out[name]={ avgScore:+(s/runs).toFixed(1), avgOverridden:+(o/runs).toFixed(1) };
+      }
+      return out;
+    },
+
+    /* one call that runs the lot */
+    verify(){
+      return { autopilot:this.autopilot(), failpilot:this.failpilot(),
+        idlepilot:this.idlepilot(2000), overrideAudit:this.overrideAudit(10), gradient:this.gradient(2) };
+    },
+  };
+}
+
+/* ============================================================================
+   17) BOOT / LOADING
+   ========================================================================== */
+(function boot(){
+  const bar=$("load-bar"); let p=0;
+  const iv=setInterval(()=>{ p=Math.min(100,p+rand(16,32)); bar.style.width=p+"%";
+    if(p>=100){ clearInterval(iv); setTimeout(goTitle, 260); }
+  }, 130);
+})();
+</script>
+</body>
+</html>

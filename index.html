@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>LP Games — Follow the Money &amp; Revolving Door</title>
-<meta name="description" content="A small collection of one-more-go arcade games about public money, power, and where trust leaks out. Follow the Money and Revolving Door — playable in any browser." />
+<title>LP Games — Follow the Money, Revolving Door &amp; Catch and Release</title>
+<meta name="description" content="A small collection of one-more-go arcade games about public money, power, and where trust leaks out. Follow the Money, Revolving Door and Catch and Release — playable in any browser." />
 <meta name="color-scheme" content="dark" />
 <meta property="og:title" content="LP Games" />
 <meta property="og:description" content="Quick browser games about public money and the revolving door. Keep the taxpayer dollar honest." />
@@ -20,6 +20,7 @@
     --red:#E4573D;
     --green:#3DDC91;
     --sky:#7FD3FF;
+    --blue:#4C8FE8;
     --line:rgba(157,178,192,.16);
     --card:rgba(14,34,51,.72);
     --card-brd:rgba(157,178,192,.22);
@@ -72,9 +73,12 @@
   .series-head .note{color:var(--paper-dim);font-size:13px}
   .series.money .series-head h2{color:var(--gold)}
   .series.door .series-head h2{color:var(--sky)}
+  .series.catch .series-head h2{color:var(--blue)}
 
   .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
-  @media (max-width:640px){.grid{grid-template-columns:1fr}}
+  .grid.three{grid-template-columns:repeat(3,1fr)}
+  @media (max-width:820px){.grid.three{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:640px){.grid,.grid.three{grid-template-columns:1fr}}
 
   a.card{
     display:flex;flex-direction:column;gap:10px;
@@ -92,6 +96,7 @@
   }
   .series.door a.card{--accent:var(--sky)}
   .series.money a.card{--accent:var(--gold)}
+  .series.catch a.card{--accent:var(--blue)}
   a.card:hover{transform:translateY(-3px);border-color:var(--accent);background:rgba(14,34,51,.9)}
   a.card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
@@ -126,7 +131,7 @@
     <header class="hero">
       <span class="kicker"><span class="dot"></span> Playable in your browser</span>
       <h1>LP&nbsp;Games</h1>
-      <p class="lede">Four quick, one-more-go arcade games about public money, power, and where trust leaks out. No install, no sign-up — just tap and play.</p>
+      <p class="lede">Seven quick, one-more-go arcade games about public money, power, and where trust leaks out. No install, no sign-up — just tap and play.</p>
     </header>
 
     <section class="series money">
@@ -174,6 +179,39 @@
             <span class="verb">Sort &amp; file</span>
           </div>
           <p>Figures step out of the revolving door one by one. File each through the right door before they slip out to the street.</p>
+          <span class="play">Play <span class="arrow">→</span></span>
+        </a>
+      </div>
+    </section>
+
+    <section class="series catch">
+      <div class="series-head">
+        <h2>Catch and Release</h2>
+        <span class="note">Catch them. Watch them come back.</span>
+      </div>
+      <div class="grid three">
+        <a class="card" href="./BeatPatrol/">
+          <div class="card-top">
+            <h3>Beat Patrol</h3>
+            <span class="verb">Walk the beat</span>
+          </div>
+          <p>Walk the beat, intercept the offenders, watch them come back to the same shop. How much Business Confidence can you hold?</p>
+          <span class="play">Play <span class="arrow">→</span></span>
+        </a>
+        <a class="card" href="./TheDocket/">
+          <div class="card-top">
+            <h3>The Docket</h3>
+            <span class="verb">Remand or bail</span>
+          </div>
+          <p>Work a day's list. Read the file, make the call: Remand or Bail. Then watch what the settings do with it.</p>
+          <span class="play">Play <span class="arrow">→</span></span>
+        </a>
+        <a class="card" href="./WhackACrook/">
+          <div class="card-top">
+            <h3>Whack-a-Crook</h3>
+            <span class="verb">Tap to catch</span>
+          </div>
+          <p>Tap the figures before they duck away. Catch one, and the same case number is back up somewhere else.</p>
           <span class="play">Play <span class="arrow">→</span></span>
         </a>
       </div>

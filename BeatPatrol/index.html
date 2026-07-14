@@ -1,0 +1,2305 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="description" content="Catch and Release — Beat Patrol. Walk the beat, intercept the offenders, watch them come back to the same shop. How much Business Confidence can you hold?" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#101623" />
+<title>Catch and Release — Beat Patrol</title>
+<style>
+/* ============================================================================
+   CATCH AND RELEASE — BEAT PATROL  (self-contained static build)
+   No build step, no dependencies, no external network calls, no CDN.
+   Mechanic: FREE-ROAM MOVE + INTERCEPT on a small street map — a chase /
+             routing verb (NOT tap-timing, NOT steer-to-dodge, NOT auto-scroll).
+             Offenders are TARGETS, never hazards. Nothing to dodge; nothing
+             can damage the player. The camera sits over a free 2D field.
+   Sibling of the other "Catch and Release" builds: shares the night-street
+   palette (deep blue-charcoal + streetlight amber) and the shared semantic
+   language — green CUSTODY, red BAIL GRANTED, amber Business Confidence,
+   blue officer. Colour is always backed by an icon + a text label.
+   ========================================================================== */
+:root{
+  --ink:#101623;            /* night street — deep blue-charcoal field */
+  --ink-2:#161F30;          /* raised surface */
+  --paper:#EDF2F7;          /* text on dark */
+  --paper-dim:#94A5BC;      /* muted text */
+  --amber:#F2A93B;          /* streetlight / BUSINESS CONFIDENCE — primary accent */
+  --amber-lite:#FFD284;
+  --amber-deep:#B87516;
+  --blue:#4C8FE8;           /* police / officer / the player */
+  --blue-lite:#8FC0FF;
+  --blue-deep:#1F4F8F;
+  --green:#4FD18B;          /* CUSTODY — the good outcome */
+  --green-deep:#1B7A4E;
+  --red:#E4573D;            /* BAIL GRANTED — the bad outcome */
+  --red-deep:#8F2C1C;
+  --silhouette:#2A3448;     /* the faceless offender figure */
+  --line:rgba(148,165,188,.16);
+  --card:rgba(22,31,48,.88);
+  --card-brd:rgba(148,165,188,.22);
+  --focus:#8FC0FF;
+  --radius:16px;
+  --shadow:0 18px 50px rgba(0,0,0,.5);
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","SFMono-Regular","Segoe UI Mono",Menlo,Consolas,monospace;
+  --draft-h:18px;           /* INTERNAL DRAFT banner height — 0 when the flag is off */
+}
+/* high-contrast toggle overrides */
+html[data-contrast="on"]{
+  --ink:#05080F; --paper:#FFFFFF; --paper-dim:#CFDCEC;
+  --amber:#FFC066; --green:#7BF0C0; --red:#FF8467; --blue:#7FB4FF;
+  --silhouette:#3E4C68;
+  --line:rgba(207,220,236,.32); --card:rgba(5,8,15,.95); --card-brd:rgba(207,220,236,.46);
+}
+/* INTERNAL_DRAFT=false sets data-draft="off" — banner gone, no layout shift */
+html[data-draft="off"]{ --draft-h:0px }
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+html{background:#05080e}
+body{
+  font-family:var(--font); color:var(--paper);
+  background:radial-gradient(120% 80% at 50% -10%, #1d2740 0%, #101623 45%, #05080e 100%);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow:hidden; overscroll-behavior:none;
+}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- Stage: centered vertical play strip, framed on wide screens ---------- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#field{
+  position:relative; width:min(100vw,560px); height:100dvh; height:100vh;
+  overflow:hidden; box-shadow:0 0 0 1px var(--line), 0 30px 90px rgba(0,0,0,.6);
+  background:var(--ink);
+}
+@media (min-width:600px){ #field{border-radius:22px; height:min(100dvh,940px); height:min(100vh,940px)} }
+canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* ---- INTERNAL DRAFT watermark (P0) — single flag removes it entirely ------ */
+#draft{
+  position:absolute;left:0;right:0;top:0;height:var(--draft-h);z-index:30;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  background:repeating-linear-gradient(135deg, rgba(242,169,59,.9) 0 9px, rgba(20,14,3,.9) 9px 18px);
+  border-bottom:1px solid rgba(242,169,59,.55);
+}
+#draft span{
+  font:800 8.5px/1 var(--font);letter-spacing:.15em;text-transform:uppercase;color:#fff;
+  background:rgba(16,22,35,.92);padding:3px 9px;border-radius:3px;white-space:nowrap;
+}
+html[data-draft="off"] #draft{display:none}
+
+/* ---- HUD ------------------------------------------------------------------ */
+#hud{position:absolute;left:0;right:0;top:var(--draft-h);padding:11px 14px;
+  display:none; flex-direction:column; gap:8px; pointer-events:none; z-index:6;
+  background:linear-gradient(180deg,rgba(16,22,35,.92) 0%,rgba(16,22,35,.62) 62%,rgba(16,22,35,0) 100%)}
+#hud.show{display:flex}
+.hud-row{display:flex;align-items:center;gap:10px}
+.hud-row.top{padding-right:140px}      /* keep clear of the top-right toggles */
+.level-pill{font:600 11.5px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--paper-dim);background:rgba(8,12,22,.6);border:1px solid var(--line);
+  padding:6px 10px;border-radius:999px;backdrop-filter:blur(6px);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.tally{display:flex;gap:6px;flex:0 0 auto}
+.tchip{display:flex;align-items:center;gap:4px;padding:5px 8px;border-radius:999px;
+  font:700 11px/1 var(--mono);backdrop-filter:blur(6px)}
+.tchip svg{width:11px;height:11px;display:block;flex:0 0 auto}
+.tchip.custody{color:var(--green);background:rgba(79,209,139,.11);border:1px solid rgba(79,209,139,.42)}
+.tchip.bail{color:var(--red);background:rgba(228,87,61,.11);border:1px solid rgba(228,87,61,.42)}
+.meter-wrap{flex:1;min-width:0}
+.meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.meter-label{font:600 10px/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--paper-dim)}
+.meter-val{font:700 14px/1 var(--mono);color:var(--amber-lite)}
+.meter-val small{color:var(--paper-dim);font-weight:600}
+.meter-bar{height:8px;border-radius:999px;background:rgba(8,12,22,.75);border:1px solid var(--line);overflow:hidden}
+.meter-fill{height:100%;width:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--amber-deep),var(--amber));
+  box-shadow:0 0 12px rgba(242,169,59,.5);transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.meter-fill.flash{background:linear-gradient(90deg,var(--red-deep),var(--red));box-shadow:0 0 12px rgba(228,87,61,.5)}
+.progress-line{height:3px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.progress-inner{height:100%;width:0;background:var(--paper-dim);opacity:.55;transition:width .2s linear}
+/* per-shopfront state strip — each chip changes independently */
+.shops{display:flex;gap:4px}
+.shop-chip{flex:1;min-width:0;display:flex;align-items:center;gap:5px;
+  padding:5px 6px;border-radius:8px;background:rgba(8,12,22,.6);border:1px solid var(--line);
+  font:600 9px/1 var(--font);letter-spacing:.05em;text-transform:uppercase;color:var(--paper-dim);
+  white-space:nowrap;overflow:hidden;backdrop-filter:blur(6px)}
+.shop-chip b{overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.shop-chip i{width:10px;height:10px;flex:0 0 auto;border-radius:50%;display:block}
+.shop-chip.open{color:var(--amber-lite);border-color:rgba(242,169,59,.4)}
+.shop-chip.open i{background:var(--amber);box-shadow:0 0 7px rgba(242,169,59,.8)}
+.shop-chip.reduced{color:var(--amber)}
+.shop-chip.reduced i{background:linear-gradient(90deg,var(--amber) 50%,rgba(242,169,59,.14) 50%);
+  border:1px solid var(--amber)}
+.shop-chip.shuttered{color:#63748e;opacity:.72}
+.shop-chip.shuttered i{background:repeating-linear-gradient(0deg,#63748e 0 2px,#2a3448 2px 4px);border-radius:2px}
+
+/* ---- Top-right toggles ---------------------------------------------------- */
+#toggles{position:absolute;top:calc(var(--draft-h) + 9px);right:11px;display:flex;gap:7px;z-index:8}
+.toggle{width:36px;height:36px;border-radius:11px;border:1px solid var(--card-brd);
+  background:rgba(8,12,22,.7);color:var(--paper-dim);cursor:pointer;display:grid;place-items:center;
+  backdrop-filter:blur(8px);transition:transform .12s ease,color .12s ease,border-color .12s}
+.toggle:hover{transform:translateY(-1px);color:var(--paper)}
+.toggle[aria-pressed="true"]{color:var(--amber);border-color:rgba(242,169,59,.5)}
+.toggle svg{width:17px;height:17px;display:block}
+.toggle:focus-visible,button:focus-visible,a.btn:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ---- Screens (DOM overlay for accessibility) ------------------------------ */
+.screen{position:absolute;inset:0;z-index:7;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:calc(20px + var(--draft-h)) 18px 20px;gap:16px;
+  overflow-y:auto;
+  background:radial-gradient(120% 70% at 50% 0%, rgba(22,31,48,.6), rgba(5,8,14,.9) 70%);
+  backdrop-filter:blur(3px)}
+.screen.show{display:flex;animation:fadeIn .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--card-brd);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 18px;display:flex;flex-direction:column;gap:13px}
+.eyebrow{font:700 11.5px/1 var(--font);letter-spacing:.16em;text-transform:uppercase;color:var(--amber)}
+h1.title{font:800 clamp(28px,7.6vw,42px)/1.02 var(--font);letter-spacing:-.02em;margin:0}
+h1.title .accent{color:var(--amber)}
+.subtitle{font:700 12.5px/1 var(--font);letter-spacing:.22em;text-transform:uppercase;color:var(--paper-dim);
+  display:flex;align-items:center;gap:9px}
+.subtitle::before,.subtitle::after{content:"";height:1px;flex:1;background:var(--line)}
+h2{font:800 clamp(21px,5.6vw,28px)/1.05 var(--font);letter-spacing:-.01em;margin:0}
+p{margin:0;color:var(--paper-dim);font-size:14.5px;line-height:1.5}
+p.lead{color:var(--paper);font-size:15px}
+.attributed{font-size:12.5px;line-height:1.45;color:var(--paper-dim);
+  border-left:3px solid var(--amber);padding:9px 0 9px 12px;background:rgba(242,169,59,.05);border-radius:0 8px 8px 0}
+.attributed + .attributed{margin-top:-4px}
+.attributed .src{display:block;margin-top:5px;color:#75879f;font-size:11.5px}
+.pending{color:var(--amber);font-weight:700;font-variant:small-caps;letter-spacing:.02em}
+
+/* buttons */
+.btn{appearance:none;border:0;cursor:pointer;font:700 15px/1 var(--font);letter-spacing:.01em;
+  padding:14px 18px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  text-decoration:none;transition:transform .12s cubic-bezier(.2,.8,.2,1),box-shadow .12s,filter .12s;width:100%}
+.btn:active{transform:translateY(1px) scale(.995)}
+.btn-primary{background:linear-gradient(180deg,var(--amber-lite),var(--amber));color:#2e1d02;
+  box-shadow:0 10px 26px rgba(242,169,59,.32),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 34px rgba(242,169,59,.4),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--paper);border:1px solid var(--card-brd)}
+.btn-ghost:hover{background:rgba(255,255,255,.09);transform:translateY(-1px)}
+.btn-green{background:linear-gradient(180deg,#77eab2,var(--green));color:#04231a;box-shadow:0 10px 26px rgba(79,209,139,.28)}
+.btn-row{display:flex;gap:9px}
+.btn-row .btn{width:auto;flex:1}
+.btnset{display:flex;flex-direction:column;gap:9px}
+
+.controls-hint{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;color:var(--paper-dim);font-size:12.5px;align-items:center}
+.key{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 6px;border-radius:6px;
+  border:1px solid var(--card-brd);background:rgba(255,255,255,.05);font:700 12px/1 var(--mono);color:var(--paper)}
+
+/* how-to legend */
+.legend{display:flex;flex-direction:column;gap:10px}
+.legend-item{display:flex;align-items:center;gap:12px}
+.chip{width:42px;height:42px;border-radius:11px;flex:0 0 auto;display:grid;place-items:center}
+.chip svg{width:23px;height:23px;display:block}
+.chip.move{background:linear-gradient(180deg,var(--blue-lite),var(--blue));color:#05203f}
+.chip.catch{background:linear-gradient(180deg,#a9d2ff,var(--blue));color:#05203f}
+.chip.bail{background:linear-gradient(180deg,#f5876f,var(--red));color:#360d05}
+.chip.custody{background:linear-gradient(180deg,#77eab2,var(--green));color:#04231a}
+.chip.conf{background:linear-gradient(180deg,var(--amber-lite),var(--amber));color:#2e1d02}
+.legend-item div p{font-size:12.5px;line-height:1.4}
+.legend-item strong{color:var(--paper);font-size:13.5px}
+
+/* results */
+.result-score{text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}
+.result-score .big{font:800 clamp(42px,13vw,64px)/1 var(--mono);color:var(--amber-lite);letter-spacing:-.02em}
+.result-score .of{font-size:13px;color:var(--paper-dim);letter-spacing:.02em}
+.result-verdict{font:700 15.5px/1.3 var(--font);text-align:center}
+.result-stats{display:flex;gap:8px;justify-content:center}
+.stat{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:9px 5px;text-align:center}
+.stat b{display:block;font:800 17px/1 var(--mono);color:var(--paper)}
+.stat b .cus{color:var(--green)} .stat b .bai{color:var(--red)} .stat b .sep{color:var(--paper-dim);font-weight:600}
+.stat span{font-size:9.5px;color:var(--paper-dim);letter-spacing:.04em;text-transform:uppercase}
+
+/* form */
+form{display:flex;flex-direction:column;gap:11px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font:600 12.5px/1 var(--font);color:var(--paper);letter-spacing:.01em}
+.field input{font:500 16px/1 var(--font);padding:12px;border-radius:10px;color:var(--paper);
+  background:rgba(8,12,22,.75);border:1px solid var(--card-brd);width:100%}
+.field input::placeholder{color:#5F708C}
+.field.two{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.err{color:#ff9d8a;font-size:11.5px;min-height:0}
+.field input[aria-invalid="true"]{border-color:var(--red)}
+.consent{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--paper-dim);line-height:1.4}
+.consent input{margin-top:2px;width:17px;height:17px;flex:0 0 auto;accent-color:var(--amber)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* leaderboard */
+.lb{width:100%;display:flex;flex-direction:column;gap:5px;max-height:42vh;overflow:auto}
+.lb-row{display:grid;grid-template-columns:30px 1fr auto;gap:9px;align-items:center;
+  padding:10px 11px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.lb-row .rank{font:800 13px/1 var(--mono);color:var(--paper-dim);text-align:center}
+.lb-row .who{font-weight:600;font-size:13.5px}
+.lb-row .who small{display:block;color:var(--paper-dim);font-weight:500;font-size:11.5px}
+.lb-row .sc{font:800 15px/1 var(--mono);color:var(--amber-lite)}
+.lb-row.me{background:rgba(242,169,59,.1);border-color:rgba(242,169,59,.45)}
+.lb-empty{color:var(--paper-dim);font-size:13.5px;text-align:center;padding:16px}
+
+/* footer / legal chrome */
+#footer{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:9px 14px calc(9px + env(safe-area-inset-bottom));
+  display:none;background:linear-gradient(0deg,rgba(5,8,14,.95),rgba(5,8,14,0));
+  font-size:10px;line-height:1.4;color:#647692;text-align:center}
+#footer.show{display:block}
+#footer .auth{color:#8496b0;font-weight:600}
+.legal-block{font-size:11px;color:var(--paper-dim);line-height:1.45;background:rgba(0,0,0,.22);
+  border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.legal-block strong{color:var(--paper)}
+
+/* misc */
+.mini{font-size:11.5px;color:var(--paper-dim);text-align:center}
+
+/* loading */
+#screen-loading{background:var(--ink)}
+.loader{display:flex;flex-direction:column;align-items:center;gap:18px}
+.loader-badge{width:74px;height:44px;position:relative}
+.loader-badge i{position:absolute;top:6px;width:30px;height:32px;border-radius:6px 6px 14px 14px;
+  animation:beat 1.5s ease-in-out infinite}
+.loader-badge i:first-child{left:2px;background:linear-gradient(180deg,var(--blue-lite),var(--blue-deep))}
+.loader-badge i:last-child{right:2px;background:linear-gradient(180deg,#ff9d8a,var(--red-deep));animation-delay:.75s}
+.loader-badge b{position:absolute;left:50%;top:2px;margin-left:-11px;width:22px;height:40px;border-radius:5px;
+  background:linear-gradient(180deg,#2B3652,#161F30)}
+@keyframes beat{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+.loader-bar{width:180px;height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.loader-bar i{display:block;height:100%;width:0;background:var(--amber);border-radius:999px;transition:width .2s linear}
+.loader-txt{font:600 11.5px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-dim)}
+
+@media (prefers-reduced-motion:reduce){ .screen.show{animation:none} .loader-badge i{animation:none;opacity:.8} }
+html[data-motion="off"] .screen.show{animation:none}
+html[data-motion="off"] .loader-badge i{animation:none;opacity:.8}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="field">
+    <canvas id="game" aria-hidden="true"></canvas>
+
+    <!-- INTERNAL DRAFT watermark — above every screen, never blocks play -->
+    <div id="draft" aria-hidden="true"><span>Internal draft — not for public distribution</span></div>
+
+    <!-- Live region for screen-reader game state -->
+    <div id="live" class="sr-only" aria-live="polite" role="status"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-row top">
+        <span class="level-pill" id="hud-level">The Beat</span>
+      </div>
+      <div class="hud-row">
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="meter-label">Business confidence</span>
+            <span class="meter-val" id="hud-conf">100<small>/100</small></span>
+          </div>
+          <div class="meter-bar"><div class="meter-fill" id="hud-fill"></div></div>
+        </div>
+        <div class="tally">
+          <span class="tchip custody" id="hud-custody"></span>
+          <span class="tchip bail" id="hud-bail"></span>
+        </div>
+      </div>
+      <div class="shops" id="hud-shops" role="list" aria-label="Shopfront status"></div>
+      <div class="progress-line"><div class="progress-inner" id="hud-progress"></div></div>
+    </div>
+
+    <!-- Toggles -->
+    <div id="toggles">
+      <button class="toggle" id="t-sound" aria-pressed="false" title="Sound (off)" aria-label="Toggle sound"></button>
+      <button class="toggle" id="t-motion" aria-pressed="false" title="Reduce motion" aria-label="Toggle reduced motion"></button>
+      <button class="toggle" id="t-contrast" aria-pressed="false" title="High contrast" aria-label="Toggle high contrast"></button>
+      <button class="toggle" id="t-pause" title="Pause" aria-label="Pause game" style="display:none"></button>
+    </div>
+
+    <!-- LOADING -->
+    <section id="screen-loading" class="screen show" aria-label="Loading">
+      <div class="loader">
+        <div class="loader-badge" aria-hidden="true"><i></i><b></b><i></i></div>
+        <div class="loader-bar"><i id="load-bar"></i></div>
+        <div class="loader-txt">Starting the shift…</div>
+      </div>
+    </section>
+
+    <!-- TITLE -->
+    <section id="screen-title" class="screen" aria-label="Start screen">
+      <div class="card">
+        <span class="eyebrow">A community-safety mini-game</span>
+        <h1 class="title">Catch and <span class="accent">Release</span></h1>
+        <div class="subtitle">Beat Patrol</div>
+        <p class="lead" id="framing-fact"></p>
+        <p id="framing-plan" style="font-size:12.5px"></p>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-play">Play — walk the beat</button>
+          <button class="btn btn-ghost" id="btn-how">How to play</button>
+        </div>
+        <div class="controls-hint">
+          <span><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> or arrows</span>
+          <span>Click / drag to walk there</span>
+          <span>Touch to steer</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section id="screen-howto" class="screen" aria-label="How to play">
+      <div class="card">
+        <span class="eyebrow">How to play</span>
+        <h2>Walk the beat. Get next to them.</h2>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="chip move" id="lg-move"></div>
+            <div><strong>Move anywhere on the street</strong><p>Keys, click-to-walk, or touch-and-drag a joystick. Nothing can hurt you — there is nothing to dodge.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip catch" id="lg-catch"></div>
+            <div><strong>Stand next to an offender to catch them</strong><p>No force, no contact — get adjacent and the case is made. The figure is a faceless silhouette with a case number.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip bail" id="lg-bail"></div>
+            <div><strong>BAIL GRANTED — most walk straight back</strong><p>Off to the courthouse, then back down the street to the <strong style="color:var(--paper)">same shopfront</strong>, same case number. Catch them again.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip custody" id="lg-custody"></div>
+            <div><strong>CUSTODY — a few are held</strong><p>That case is off your beat for the rest of the level. It never walks back. That’s the whole reward — and it’s the rare one.</p></div>
+          </div>
+          <div class="legend-item">
+            <div class="chip conf" id="lg-conf"></div>
+            <div><strong>Leave one loitering and the shop pays</strong><p>Each shopfront goes open → reduced hours → shuttered on its own. The meter is all of them together.</p></div>
+          </div>
+        </div>
+        <p class="mini">The skill is <strong style="color:var(--paper)">who you go to next</strong> — not reflexes. Press <span class="key">F</span> to head for the nearest offender.</p>
+        <button class="btn btn-primary" id="btn-how-start">Start the shift</button>
+      </div>
+    </section>
+
+    <!-- TRANSITION -->
+    <section id="screen-transition" class="screen" aria-label="Next level">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow" id="tr-eyebrow">Level 2</span>
+        <h2 id="tr-name">Repeat Offenders</h2>
+        <p id="tr-desc"></p>
+        <div class="result-score" style="margin:2px 0">
+          <span class="of">Business confidence still standing</span>
+          <span class="big" id="tr-carry" style="font-size:clamp(30px,10vw,44px)">100</span>
+        </div>
+        <button class="btn btn-primary" id="btn-transition">Back on the beat</button>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="screen-pause" class="screen" aria-label="Paused">
+      <div class="card" style="text-align:center;align-items:center">
+        <span class="eyebrow">Paused</span>
+        <h2>Off the beat</h2>
+        <div class="btnset" style="max-width:280px">
+          <button class="btn btn-primary" id="btn-resume">Resume</button>
+          <button class="btn btn-ghost" id="btn-restart">Restart shift</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="screen-results" class="screen" aria-label="Results">
+      <div class="card">
+        <span class="eyebrow" id="res-eyebrow">Shift over</span>
+        <div class="result-score">
+          <span class="big" id="res-score">0</span>
+          <span class="of">of 100 business confidence held</span>
+        </div>
+        <p class="result-verdict" id="res-verdict"></p>
+        <div class="result-stats">
+          <div class="stat"><b id="res-arrests">0</b><span>Arrests</span></div>
+          <div class="stat"><b id="res-ratio">0 : 0</b><span>Custody : Bail</span></div>
+          <div class="stat"><b id="res-shut">0</b><span>Shops shuttered</span></div>
+        </div>
+        <div class="attributed" id="res-citation"></div>
+        <div class="attributed" id="res-citation2"></div>
+        <div class="btn-row">
+          <a class="btn btn-green" id="btn-donate" href="#" target="_blank" rel="noopener">Donate</a>
+          <a class="btn btn-ghost" id="btn-policy" href="#" target="_blank" rel="noopener">Our bail plan</a>
+        </div>
+        <div class="btnset">
+          <button class="btn btn-primary" id="btn-leaderboard">Add my score to the board</button>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="btn-share">Share</button>
+            <button class="btn btn-ghost" id="btn-replay">Play again</button>
+          </div>
+        </div>
+        <div class="legal-block" id="res-disclaimer"></div>
+      </div>
+    </section>
+
+    <!-- FORM -->
+    <section id="screen-form" class="screen" aria-label="Join the leaderboard">
+      <div class="card">
+        <span class="eyebrow">Add your score</span>
+        <h2>Join the board</h2>
+        <p style="font-size:12.5px">Your score will show as first name + postcode. <span id="form-privacy"></span></p>
+        <form id="lead-form" novalidate autocomplete="on">
+          <div class="field two">
+            <div class="field">
+              <label for="f-first">First name</label>
+              <input id="f-first" name="fname" autocomplete="given-name" maxlength="40" inputmode="text" />
+              <span class="err" id="e-first"></span>
+            </div>
+            <div class="field">
+              <label for="f-last">Last name</label>
+              <input id="f-last" name="lname" autocomplete="family-name" maxlength="40" />
+              <span class="err" id="e-last"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-email">Email</label>
+            <input id="f-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="120" />
+            <span class="err" id="e-email"></span>
+          </div>
+          <div class="field">
+            <label for="f-postcode">Postcode</label>
+            <input id="f-postcode" name="postcode" inputmode="numeric" maxlength="4" pattern="\d{4}" />
+            <span class="err" id="e-postcode"></span>
+          </div>
+          <!-- honeypot -->
+          <div class="hp" aria-hidden="true"><label>Website<input id="f-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <label class="consent">
+            <input type="checkbox" id="f-consent" />
+            <span id="consent-label"></span>
+          </label>
+          <span class="err" id="e-consent"></span>
+          <button class="btn btn-primary" type="submit" id="btn-submit">Submit &amp; see the board</button>
+          <button class="btn btn-ghost" type="button" id="btn-skip">Skip — just show the board</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="screen-leaderboard" class="screen" aria-label="Leaderboard">
+      <div class="card">
+        <span class="eyebrow">Leaderboard</span>
+        <h2>Who held the street</h2>
+        <div class="lb" id="lb-list"></div>
+        <p class="mini" id="lb-note"></p>
+        <div class="btnset">
+          <div class="btn-row">
+            <a class="btn btn-green" id="btn-donate2" href="#" target="_blank" rel="noopener">Donate</a>
+            <a class="btn btn-ghost" id="btn-policy2" href="#" target="_blank" rel="noopener">Our bail plan</a>
+          </div>
+          <button class="btn btn-ghost" id="btn-replay2">Play again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER: legal chrome -->
+    <footer id="footer">
+      <div class="auth" id="foot-auth"></div>
+      <div id="foot-disclaimer"></div>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+/* ============================================================================
+   1) CONTENT  —  SINGLE SOURCE OF TRUTH FOR EVERY FACTUAL CLAIM
+   --------------------------------------------------------------------------
+   >>> LEGAL / COMMS REVIEW HAPPENS HERE. <<<
+   Everything with any factual weight is in this one object. Nothing factual is
+   hardcoded anywhere else in this file. Figures ship as clearly-marked
+   placeholders until the policy team supplies signed-off wording.
+
+   Guardrails for this build (law-and-order subject — the strictest set):
+     - NO invented statistic, source, date, or policy claim. Ever. The PRD lists
+       the reoffending figure, the business-impact figure and the policy hook as
+       BLOCKING open questions; they ship as [... PENDING ...] until they land.
+     - The offender figure is a FACELESS SILHOUETTE in one flat colour. No face,
+       no facial features, no hair, no skin tone, no ethnic or racial markers of
+       any kind, no hoodie-thug shorthand, no weapons.
+     - Offenders are identified ONLY by an invented case-number chip and a
+       generic offence archetype from the list below — never by appearance.
+     - The arrest is a NON-CONTACT "caught" beat. No takedown, no force, no
+       restraint depicted. No violence, no blood, no harm to any person.
+     - Business impact only, and stylised: a shutter coming down, a window
+       becoming a cracked-glass PATTERN. No realism.
+     - NO real, identifiable individual, case, company, union, organisation,
+       brand or logo appears anywhere, in visuals or copy. Shopfronts use the
+       generic labels below and nothing else.
+   ========================================================================== */
+const CONTENT = {
+  // Framing (title screen). NOT a claim — the policy team has not supplied copy.
+  framingFact:
+    "[FRAMING COPY PENDING LEGAL SIGN-OFF] — the bail and reoffending framing " +
+    "for this asset has not been supplied by the policy team. This build ships " +
+    "the game mechanic only. No claim is made on this screen until signed-off " +
+    "wording lands.",
+  framingPlan:
+    "[POLICY HOOK PENDING] — the Liberal Party’s bail and community-safety plan.",
+
+  // Generic SHOPFRONT labels. No real businesses — these are the only labels used.
+  shopNames: ["Corner Store","Chemist","Bakery","Newsagent","Hardware",
+              "Cafe","Grocer","Barber","Bottle Shop","Laundromat"],
+  // Generic OFFENCE archetypes (neutral, non-lurid). Attached to a case number only.
+  offences: ["Retail theft","Car theft","Burglary","Criminal damage",
+             "Theft from vehicle","Shop break-in"],
+
+  // Levels
+  levels: {
+    l1: { name:"The Beat",
+          desc:"Three shopfronts. Slow movers, and the courthouse holds a fair few. Learn the street." },
+    l2: { name:"Repeat Offenders",
+          desc:"Four shopfronts, quicker on their feet — and once bail is granted they walk straight back to the shop they came from." },
+    l3: { name:"Closing Time",
+          desc:"Five shopfronts, four cases at once, and almost every one of them is back on the street before you’ve finished the paperwork." },
+    bonus:{ name:"Business as Usual",
+          desc:"The satirical one: every arrest sticks, every shop stays open. This is what it looks like when the system holds." },
+  },
+
+  // Headline attributed statistic on the results screen (P0: reoffending/bail).
+  // NOTHING here is asserted as the party's own finding.
+  citation: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",
+    framing: "…of people on bail went on to reoffend… (framing copy PENDING)",
+    source:  "[SOURCE PENDING]",
+    date:    "[DATE OF CITED SOURCE PENDING]",
+    signoff: "PENDING",
+  },
+  // Secondary attributed statistic — the business/insurance impact frame that the
+  // Business Confidence meter in this build represents. Also blocking per the PRD.
+  businessCitation: {
+    figure:  "[FIGURE PENDING LEGAL SIGN-OFF]",
+    framing: "…business-impact / insurance-premium framing PENDING… (this meter is " +
+             "an illustrative game mechanic, not a measurement)",
+    source:  "[SOURCE PENDING]",
+    date:    "[DATE OF CITED SOURCE PENDING]",
+    signoff: "PENDING",
+  },
+
+  // Fiction disclaimer.
+  disclaimer:
+    "This game is a stylised fiction. No real person, case, business or organisation " +
+    "is depicted, named or referred to. Offender figures are faceless silhouettes " +
+    "identified only by an invented case number; shopfronts carry generic labels. " +
+    "All case details and figures shown in play are illustrative. Any cited statistic " +
+    "is attributed to its source and shown together with that source.",
+
+  // Electoral authorisation line — legally required for electoral matter.
+  authorisation: "Authorised by [NAME PENDING], [PARTY & ADDRESS PENDING].",
+
+  // Lead-capture collection statement (privacy).
+  privacy:
+    "We collect your details to contact you about this campaign. You can opt out " +
+    "any time. See our [collection statement — LINK PENDING].",
+  consentLabel:
+    "I agree to be contacted and to the collection statement above. [WORDING PENDING LEGAL SIGN-OFF]",
+
+  // CTAs — placeholder hrefs, clearly not live. (UTM tagging is added at launch.)
+  donateUrl: "#donate-url-pending",
+  policyUrl: "#bail-policy-url-pending",
+
+  // Share text (neutral).
+  shareText: (score) =>
+    `I held ${score}/100 business confidence on the beat in "Catch and Release — Beat Patrol". They kept coming back. Can you do better?`,
+};
+
+/* Single flag: set to false to remove the INTERNAL DRAFT banner everywhere. */
+const INTERNAL_DRAFT = true;
+
+/* ============================================================================
+   2) THEME + SMALL HELPERS
+   ========================================================================== */
+const COL = {
+  ink:"#101623", ink2:"#161F30", paper:"#EDF2F7", dim:"#94A5BC",
+  amber:"#F2A93B", amberLite:"#FFD284", amberDeep:"#B87516",
+  blue:"#4C8FE8", blueLite:"#8FC0FF", blueDeep:"#1F4F8F",
+  green:"#4FD18B", greenDeep:"#1B7A4E",
+  red:"#E4573D", redDeep:"#8F2C1C",
+  silhouette:"#2A3448", silhouetteLite:"#3B4964",
+  road:"#171E2C", roadLine:"#3A465E", path:"#1E2637", block:"#1A2233", blockTop:"#232D42",
+};
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randInt=(a,b)=>Math.floor(rand(a,b+1));
+const choice=a=>a[Math.floor(Math.random()*a.length)];
+const easeOutCubic=t=>1-Math.pow(1-t,3);
+const TAU=Math.PI*2;
+const $=id=>document.getElementById(id);
+const dist=(ax,ay,bx,by)=>Math.hypot(ax-bx,ay-by);
+function shuffled(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=randInt(0,i); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function getMono(){ return 'ui-monospace,"Cascadia Code",Menlo,Consolas,monospace'; }
+function getSans(){ return 'ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'; }
+
+/* ============================================================================
+   3) PERSISTENT SETTINGS (sound / motion / contrast) — shared across the suite
+   ========================================================================== */
+const store = {
+  get(k,d){ try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d} },
+  set(k,v){ try{localStorage.setItem(k,JSON.stringify(v))}catch{} },
+};
+const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const settings = {
+  sound:    store.get("cr_sound", false),
+  motion:   store.get("cr_motion", prefersReducedMotion ? "off" : "on"),
+  contrast: store.get("cr_contrast", false),
+};
+const motionOn = () => settings.motion === "on";
+
+/* ============================================================================
+   4) AUDIO — WebAudio, muted by default, lazy-init on first gesture.
+   Every cue has a redundant visual + live-region announcement, so sound-off
+   loses no information.
+   ========================================================================== */
+const Sound = (()=>{
+  let ctx=null, master=null, ready=false;
+  function init(){
+    if(ready) return;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=.5; master.connect(ctx.destination); ready=true;
+    }catch{}
+  }
+  function tone(freq,dur,type="sine",vol=.3,slideTo=null,delay=0){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain(), t=ctx.currentTime+delay;
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1,slideTo),t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.008);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.02);
+  }
+  function noise(dur,vol=.2,hp=1400){
+    if(!ready||!settings.sound) return;
+    if(ctx.state==="suspended") ctx.resume();
+    const n=Math.floor(ctx.sampleRate*dur), buf=ctx.createBuffer(1,n,ctx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.2);
+    const src=ctx.createBufferSource(); src.buffer=buf;
+    const f=ctx.createBiquadFilter(); f.type="highpass"; f.frequency.value=hp;
+    const g=ctx.createGain(); g.gain.value=vol;
+    src.connect(f); f.connect(g); g.connect(master); src.start();
+  }
+  return {
+    init,
+    arrest(){ tone(680,.07,"sine",.11); tone(1020,.11,"sine",.10,null,.06); },
+    bail(){ tone(150,.24,"square",.13,70); tone(300,.4,"sawtooth",.09,110,.05); },
+    custody(){ [523,659,880].forEach((f,i)=>tone(f,.16,"sine",.12,null,i*.06)); tone(1400,.05,"square",.05,null,.2); },
+    breakGlass(){ noise(.34,.22,2100); tone(120,.22,"sine",.12,60); },
+    shutter(){ tone(420,.42,"sawtooth",.09,90); noise(.3,.06,600); },
+    warn(){ tone(880,.07,"triangle",.045); },
+    level(){ tone(392,.12,"sine",.13,588); tone(588,.18,"sine",.11,null,.09); },
+    win(){ [523,659,784,1046].forEach((f,i)=>tone(f,.34,"sine",.13,null,i*.09)); },
+    lose(){ tone(200,.5,"sine",.13,90); },
+  };
+})();
+
+/* ============================================================================
+   5) CANVAS + RESPONSIVE SCALER + CAMERA
+   --------------------------------------------------------------------------
+   The map is a fixed-size 2D world; the camera SITS OVER IT and eases toward
+   the player, clamped to the world bounds. This is not a scrolling corridor —
+   the player moves freely in both axes and the camera simply follows, and it
+   only moves because the player did.
+
+   Fitting rule: COVER, not contain. The world is deliberately shaped like a
+   street (460x1040, ratio 1:2.26) so that on any portrait strip up to that
+   ratio the FULL WIDTH is always on screen — both rows of shopfronts, their
+   signs and their state labels are never cut off — while the leftover height
+   becomes gentle vertical camera-follow. Contain-fitting a wider world instead
+   clipped the shop signs off-screen entirely and panned nowhere; this shape
+   fixes both. Zoom only ever eases IN (>= 1), because zooming out past 1 would
+   start clipping the width again.
+   ========================================================================== */
+const canvas=$("game"), ctx=canvas.getContext("2d");
+let W=0,H=0,DPR=1;
+function resize(){
+  W=Math.max(1,canvas.clientWidth); H=Math.max(1,canvas.clientHeight);
+  DPR=Math.min(window.devicePixelRatio||1, 2.5);
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+const WORLD = { w:460, h:1040 };
+const VIEW_CX = () => W/2;
+const VIEW_CY = () => H*0.54;          // nudged down so the HUD doesn't sit on the action
+const fitScale = () => Math.max(W/WORLD.w, H/WORLD.h);
+const cam = { x:WORLD.w/2, y:900, z:1, zt:1, punch:0 };
+function camScale(){ return fitScale()*cam.z; }
+function camTargetFor(px,py){
+  const S=camScale(), hw=W/(2*S), hh=H/(2*S);
+  const x = hw*2>=WORLD.w ? WORLD.w/2 : clamp(px, hw, WORLD.w-hw);
+  const y = hh*2>=WORLD.h ? WORLD.h/2 : clamp(py, hh, WORLD.h-hh);
+  return {x,y};
+}
+function camSnap(px,py){ const t=camTargetFor(px,py); cam.x=t.x; cam.y=t.y; }
+function updateCamera(dt){
+  cam.punch=Math.max(0,cam.punch-dt*3.4);
+  // never below 1: zooming out would clip the street's full width off-screen
+  cam.zt = motionOn() ? (1 + cam.punch*0.05) : 1;
+  cam.z = motionOn() ? lerp(cam.z, cam.zt, 1-Math.exp(-dt*3.2)) : 1;
+  const t = camTargetFor(player.x, player.y);
+  const k = 1-Math.exp(-dt*(motionOn()?4.4:12));
+  cam.x = lerp(cam.x, t.x, k); cam.y = lerp(cam.y, t.y, k);
+}
+function worldToScreen(wx,wy){ const S=camScale(); return { x:(wx-cam.x)*S+VIEW_CX(), y:(wy-cam.y)*S+VIEW_CY() }; }
+function screenToWorld(sx,sy){ const S=camScale(); return { x:(sx-VIEW_CX())/S+cam.x, y:(sy-VIEW_CY())/S+cam.y }; }
+
+/* ============================================================================
+   6) PARTICLES + FLOATING TEXT (pooled)
+   ========================================================================== */
+const particles=[]; const POOL_MAX=420;
+function spawnParticles(x,y,color,count,opts={}){
+  if(!motionOn()) count=Math.min(count,4);
+  for(let i=0;i<count;i++){
+    if(particles.length>=POOL_MAX) break;
+    const a=opts.angle!=null?opts.angle+rand(-.7,.7):rand(0,TAU);
+    const sp=rand(opts.spMin??30,opts.spMax??180);
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp - (opts.lift||0),
+      life:rand(.4,.9),max:.9,size:rand(1.4,3.6),color,g:opts.g??80,sq:!!opts.sq});
+  }
+}
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.life-=dt; if(p.life<=0){particles.splice(i,1);continue}
+    p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.98;
+  }
+}
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha=clamp(p.life/p.max,0,1); ctx.fillStyle=p.color;
+    if(p.sq){ ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,TAU); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+}
+const floaters=[];
+function spawnFloater(x,y,text,color,big){ floaters.push({x,y,text,color,life:1.25,max:1.25,big:!!big}); }
+function updateFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=26*dt; if(f.life<=0) floaters.splice(i,1); }
+}
+function drawFloaters(){
+  ctx.textAlign="center";
+  for(const f of floaters){
+    ctx.globalAlpha=clamp(f.life/f.max,0,1);
+    ctx.font=(f.big?"800 17px ":"800 12px ")+getMono();
+    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillText(f.text,f.x+1,f.y+1);
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ============================================================================
+   7) LEVEL DATA — difficulty is a data table, provable straight from these
+   numbers (see the README table). Every knob that escalates lives here.
+   --------------------------------------------------------------------------
+   shops        : shopfronts on the map
+   concurrent   : live cases at once (on-street + at the courthouse)
+   speed        : offender walk speed, world units/sec
+   bail         : P(BAIL GRANTED) at the courthouse — the bail-grant weighting.
+                  1-bail = P(CUSTODY). Escalates .55 -> .70 -> .85
+   breakAt      : seconds of uninterrupted loitering next to a shopfront before
+                  its window goes (one step down the open->reduced->shuttered ladder)
+   bailHeatMult : loiter speed multiplier once an offender has been bail-granted —
+                  the ones who came back do the damage faster
+   returnSpeed  : walk-speed multiplier on the way back from the courthouse
+   homing       : true  -> after bail they path DIRECTLY back to their origin shop
+                  false -> they drift back to it with a detour
+   court        : min/max seconds held at the courthouse before the outcome. The
+                  SPREAD matters as much as the floor: catching several cases in
+                  a burst would otherwise release them in a burst, stacking up
+                  simultaneous threats that no officer could physically reach.
+                  A wide spread staggers the returns, which is both fairer and
+                  truer — some are back out in an hour, some take a day.
+   strikeCost   : Business Confidence lost per broken window. In the three main
+                  levels this is the ONLY thing that moves the score, so the
+                  number is deterministic given play — no luck from the bail
+                  roll leaks into it, and the four variants stay comparable.
+                  CUSTODY's reward here is not points: it takes that case off
+                  the beat, which is worth more. Confidence only ever climbs in
+                  the bonus level (see BONUS.restoreCap).
+   spawnGap     : minimum seconds between new cases appearing (keeps them staggered)
+   duration     : level length in seconds (a level also ends early if every
+                  shopfront is shuttered — there is nothing left to protect)
+   ========================================================================== */
+const LEVELS = [
+  { key:"l1", ...CONTENT.levels.l1, shops:3, concurrent:2, speed:38, bail:0.55,
+    breakAt:9.0, bailHeatMult:1.45, returnSpeed:1.40, homing:false,
+    courtMin:4.5, courtMax:8.0, strikeCost:5, spawnGap:4.0, duration:42 },
+  { key:"l2", ...CONTENT.levels.l2, shops:4, concurrent:3, speed:48, bail:0.70,
+    breakAt:8.0, bailHeatMult:1.60, returnSpeed:1.50, homing:true,
+    courtMin:4.0, courtMax:7.5, strikeCost:6, spawnGap:3.6, duration:48 },
+  { key:"l3", ...CONTENT.levels.l3, shops:5, concurrent:4, speed:56, bail:0.85,
+    breakAt:7.2, bailHeatMult:1.75, returnSpeed:1.60, homing:true,
+    courtMin:3.5, courtMax:7.5, strikeCost:7, spawnGap:3.2, duration:54 },
+];
+/* Bonus — the satirical beat. bail:0 => every arrest is CUSTODY; shopsImmune =>
+   every shopfront stays open. This is the ONLY level where Business Confidence
+   can go up, which is the joke: confidence only recovers when the cases stick.
+   The recovery is EARNED (+2 per custody) and capped (+8 total, never above
+   100), so it can never rescue a blown run — a player who arrests nobody here
+   gets nothing at all. */
+const BONUS = { key:"bonus", ...CONTENT.levels.bonus, shops:4, concurrent:3, speed:44, bail:0.0,
+    breakAt:99, bailHeatMult:1, returnSpeed:1, homing:false,
+    courtMin:1.8, courtMax:2.6, strikeCost:0, custodyRestore:2, restoreCap:8,
+    spawnGap:2.4, duration:24, shopsImmune:true };
+
+/* speed is the difficulty dial that decides whether ROUTING matters: it sets
+   travel time against breakAt. Too fast and you can reach every threat in any
+   order, so prioritisation is free and the game has no skill. Measured against
+   the sim() harness — see the README's skill-gradient table. */
+const PLAYER = { speed:205, r:14, arrestR:36 };
+/* How close to a shopfront counts as loitering AT it. Must be big enough to
+   contain the whole loiter circuit (max ~93 from the front) but small enough
+   that the centre of the street (128 from either front) stays neutral —
+   otherwise simply walking past a shop would build heat against it, which is
+   both unfair and unreadable. */
+const LOITER_R = 110;
+const HEAT_DECAY = 0.6;        // heat bleeds off this fast once they move away
+
+/* ============================================================================
+   8) GAME STATE
+   ========================================================================== */
+const player = { x:WORLD.w/2, y:958, vx:0, vy:0, moveTo:null, face:-Math.PI/2, phase:0, flash:0 };
+let shops = [];
+let offenders = [];
+let lanes = { L:null, R:null };
+let caseSeq = 0;
+const game = {
+  state:"loading",        // loading|title|howto|playing|bonus|transition|pause|results|form|leaderboard
+  levelIdx:0,
+  conf:100,               // Business Confidence = the score. Continuous across levels.
+  arrests:0, bail:0, custody:0, broken:0, shuttered:0,
+  lvlBail:0,              // bail grants so far this level (first one is guaranteed)
+  bonusRestored:0,
+  t:0, dur:1,
+  spawnT:0,
+  ledger:[],              // every courthouse outcome: origin shop vs. destination shop
+  stamp:null,
+  shake:0, hitstop:0, timeScale:1, flash:0, flashCol:COL.red, confetti:0,
+  lastPlayerId:null, _pendingLevel:null, _resumeState:null,
+};
+function levelDef(){ return LEVELS[game.levelIdx] || LEVELS[0]; }
+function activeDef(){ return game.state==="bonus" ? BONUS : levelDef(); }
+
+/* ---- Screen (DOM) management --------------------------------------------- */
+const SCREENS=["loading","title","howto","transition","pause","results","form","leaderboard"];
+function showScreen(name){ for(const s of SCREENS){ $("screen-"+s).classList.toggle("show", s===name); } }
+function hideAllScreens(){ for(const s of SCREENS) $("screen-"+s).classList.remove("show"); }
+function setHUD(on){ $("hud").classList.toggle("show", on); $("t-pause").style.display=on?"grid":"none"; }
+function setFooter(on){ $("footer").classList.toggle("show", on); }
+function say(msg){ $("live").textContent=msg; }
+
+/* ============================================================================
+   9) THE STREET — map, shopfronts, offenders, the courthouse
+   ========================================================================== */
+const MAP = {
+  streetX0:76, streetX1:384, streetY0:130, streetY1:1000,
+  blockW:76, shopH:112,
+  courtX:WORLD.w/2, courtY:64, doorY:108,
+  stationY:1004,
+};
+const shopFrontX = side => side<0 ? MAP.streetX0+26 : MAP.streetX1-26;
+
+/* Walkable area = the street plus the two laneways. This is a UNION OF RECTS,
+   not a corridor: the player moves freely inside it in both axes. It exists
+   only to keep the officer out of the buildings — nothing here is an obstacle
+   to avoid and nothing here can damage the player. */
+let walkRects = [];
+function inRect(x,y,r){ return x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h; }
+function clampWalk(p){
+  for(const r of walkRects) if(inRect(p.x,p.y,r)) return p;
+  let bx=p.x, by=p.y, bd=Infinity;
+  for(const r of walkRects){
+    const cx=clamp(p.x,r.x,r.x+r.w), cy=clamp(p.y,r.y,r.y+r.h);
+    const d=(cx-p.x)**2+(cy-p.y)**2;
+    if(d<bd){ bd=d; bx=cx; by=cy; }
+  }
+  p.x=bx; p.y=by; return p;
+}
+
+/* Lay the street out for a level: n shopfronts alternating down both sides,
+   then a service laneway dropped into the biggest gap on each side. */
+function largestGap(bands, lo, hi){
+  const free=[]; let cur=lo;
+  const sorted=bands.slice().sort((a,b)=>a[0]-b[0]);
+  for(const [a,b] of sorted){ if(a>cur) free.push([cur,Math.min(a,hi)]); cur=Math.max(cur,b); }
+  if(cur<hi) free.push([cur,hi]);
+  let best=null, bw=-1;
+  for(const [a,b] of free){ if(b-a>bw){ bw=b-a; best=[a,b]; } }
+  return best ? (best[0]+best[1])/2 : (lo+hi)/2;
+}
+function buildStreet(L){
+  const n=L.shops, names=shuffled(CONTENT.shopNames).slice(0,n);
+  const yTop=228, yBot=846;
+  shops = [];
+  for(let i=0;i<n;i++){
+    const t = n===1 ? .5 : i/(n-1);
+    const y = Math.round(lerp(yTop,yBot,t));
+    const side = (i%2===0) ? -1 : 1;
+    shops.push({ id:i, name:names[i], side, y, fx:shopFrontX(side),
+      strikes:0, state:"open", crack:0, crackSeed:rand(0,999), shake:0,
+      flicker:rand(0,TAU), threat:0 });
+  }
+  // laneways: the widest free band on each side, kept away from the map ends
+  const bandsL = shops.filter(s=>s.side<0).map(s=>[s.y-MAP.shopH/2-14, s.y+MAP.shopH/2+14]);
+  const bandsR = shops.filter(s=>s.side>0).map(s=>[s.y-MAP.shopH/2-14, s.y+MAP.shopH/2+14]);
+  const lyL = Math.round(largestGap(bandsL, 210, 880));
+  const lyR = Math.round(largestGap(bandsR, 210, 880));
+  lanes.L = { y:lyL, rect:{ x:0, y:lyL-28, w:MAP.streetX0, h:56 }, mouth:{ x:26, y:lyL } };
+  lanes.R = { y:lyR, rect:{ x:MAP.streetX1, y:lyR-28, w:WORLD.w-MAP.streetX1, h:56 }, mouth:{ x:WORLD.w-26, y:lyR } };
+  walkRects = [
+    { x:MAP.streetX0, y:MAP.streetY0, w:MAP.streetX1-MAP.streetX0, h:MAP.streetY1-MAP.streetY0 },
+    lanes.L.rect, lanes.R.rect,
+  ];
+  renderShopChips();
+}
+
+/* ---- offenders ------------------------------------------------------------ */
+function nextCase(){ caseSeq++; return "#"+(4000+((caseSeq*617)%5900)); }
+
+function spawnPointFor(shop){
+  let best=null, bd=Infinity;
+  for(const m of [lanes.L.mouth, lanes.R.mouth]){
+    const d=dist(m.x,m.y,shop.fx,shop.y); if(d<bd){ bd=d; best=m; }
+  }
+  if(best && bd<=330) return { x:best.x, y:best.y };
+  const dy = shop.y < (MAP.streetY0+MAP.streetY1)/2 ? 210 : -210;
+  return { x:clamp(WORLD.w/2+rand(-60,60),MAP.streetX0+24,MAP.streetX1-24), y:clamp(shop.y+dy, MAP.streetY0+20, MAP.streetY1-20) };
+}
+/* A small preset circuit around the shop front — this is the whole of the AI.
+   No pathfinding: four fixed offsets walked in a loop, with a short pause at
+   each. It stays well inside LOITER_R, so an uncaught offender keeps the
+   pressure on the shopfront it is standing outside. */
+function loiterCircuit(shop){
+  const dir = shop.side<0 ? 1 : -1;
+  const offs = [[14,-56],[62,-22],[70,38],[20,62]];
+  return offs.map(([a,b])=>({
+    x: shop.fx + dir*(a + rand(-9,9)),
+    y: clamp(shop.y + b + rand(-11,11), MAP.streetY0+16, MAP.streetY1-16),
+  }));
+}
+function spawnOffender(shop){
+  const p = spawnPointFor(shop);
+  const L = activeDef();
+  const o = {
+    id: Math.random().toString(36).slice(2),
+    case: nextCase(), offence: choice(CONTENT.offences),
+    shopId: shop.id,                 // ORIGIN — immutable for the life of the case
+    x:p.x, y:p.y, speed:L.speed,
+    state:"arriving", wp:[], wpi:0, pause:0,
+    heat:0, heatShop:null, returned:false, bailCount:0,
+    fade:0, phase:rand(0,TAU), face:0,
+    arrestT:0, courtT:0, courtMax:1, chipFrom:null, trail:[], trailT:0, trailFade:0,
+  };
+  o.wp = [
+    { x:clamp(WORLD.w/2+rand(-80,80),MAP.streetX0+24,MAP.streetX1-24), y:Math.round(lerp(p.y, shop.y, .5)) },
+    { x:shop.fx, y:shop.y },
+  ];
+  offenders.push(o);
+  return o;
+}
+const ARRESTABLE = new Set(["arriving","loitering","returning"]);
+const LIVE = new Set(["arriving","loitering","returning","arrested","court"]);
+function liveCount(){ let n=0; for(const o of offenders) if(LIVE.has(o.state)) n++; return n; }
+
+function updateSpawner(dt){
+  const L=activeDef();
+  game.spawnT -= dt;
+  if(liveCount() >= L.concurrent) return;
+  if(game.spawnT > 0) return;
+  const openShops = shops.filter(s=>s.state!=="shuttered");
+  if(!openShops.length) return;
+  // spread the pressure: prefer the open shop with the fewest live cases on it,
+  // so shopfront states move independently rather than one dying at a time
+  let bestN=Infinity, pool=[];
+  for(const s of openShops){
+    const n=offenders.filter(o=>LIVE.has(o.state)&&o.shopId===s.id).length;
+    if(n<bestN){ bestN=n; pool=[s]; } else if(n===bestN) pool.push(s);
+  }
+  spawnOffender(choice(pool));
+  game.spawnT = L.spawnGap;
+}
+
+/* Walk an offender along its waypoint list. Returns true when the list is done. */
+function walkWaypoints(o,dt){
+  if(o.pause>0){ o.pause-=dt; return false; }
+  const t=o.wp[o.wpi]; if(!t) return true;
+  const d=dist(o.x,o.y,t.x,t.y);
+  if(d<7){ o.wpi++; return o.wpi>=o.wp.length; }
+  const k=(o.speed*dt)/d;
+  o.x+=(t.x-o.x)*Math.min(1,k); o.y+=(t.y-o.y)*Math.min(1,k);
+  o.face=Math.atan2(t.y-o.y,t.x-o.x);
+  o.phase+=dt*5.5;
+  return false;
+}
+
+/* ---- the single Business Confidence mutation point ------------------------ */
+function applyConfidence(delta){
+  const before=game.conf;
+  game.conf = clamp(game.conf + delta, 0, 100);
+  updateHUD();
+  return game.conf - before;    // what actually landed, after clamping
+}
+
+/* ---- the single arrest path ---------------------------------------------- */
+function arrest(o){
+  const shop=shops[o.shopId];
+  o.state="arrested"; o.arrestT=0; o.chipFrom={x:o.x,y:o.y}; o.heat=0; o.heatShop=null;
+  game.arrests++;
+  const mx=(o.x+player.x)/2, my=(o.y+player.y)/2;
+  player.flash=1;
+  spawnParticles(mx,my,COL.blueLite, motionOn()?12:3, {spMin:30,spMax:120,g:20});
+  spawnFloater(o.x, o.y-30, "CAUGHT "+o.case, COL.blueLite);
+  if(motionOn()){ game.hitstop=0.035; cam.punch=1; }
+  Sound.arrest();
+  say(`Caught case ${o.case} — ${o.offence.toLowerCase()} — outside the ${shop?shop.name:"shop"}.`);
+}
+
+/* ---- the single courthouse outcome path ----------------------------------
+   Every bail/custody result in the game — real play and every debug pilot —
+   comes through here. Nothing writes the score directly. */
+function resolveCase(o, forced){
+  const L=activeDef(); const shop=shops[o.shopId];
+  let kind;
+  if(forced) kind=forced;
+  else if(L.bail<=0) kind="custody";                        // bonus level: it always sticks
+  else if(game.lvlBail===0) kind="bail";                    // guarantee one visible walk-back per level
+  else kind = Math.random()<L.bail ? "bail" : "custody";
+
+  game.ledger.push({
+    case:o.case, offence:o.offence, level:L.name,
+    originId:o.shopId, origin:shop?shop.name:"—",
+    outcome:kind,
+    destId: kind==="bail" ? o.shopId : null,
+    dest:   kind==="bail" ? (shop?shop.name:"—") : null,
+  });
+
+  if(kind==="bail"){
+    game.bail++; game.lvlBail++;
+    o.returned=true; o.bailCount++;
+    o.state="returning";
+    o.x=MAP.courtX; o.y=MAP.doorY; o.fade=0; o.trail=[]; o.trailFade=1;
+    o.speed = L.speed * L.returnSpeed;
+    o.heat=0; o.heatShop=null; o.wpi=0;
+    // ...and they walk back to the SAME shopfront they were taken from.
+    o.wp = L.homing
+      ? [ { x:shop.fx, y:shop.y } ]
+      : [ { x:clamp(WORLD.w/2+rand(-90,90),MAP.streetX0+24,MAP.streetX1-24), y:Math.round(lerp(MAP.doorY, shop.y, .55)) },
+          { x:shop.fx, y:shop.y } ];
+    showStamp("bail", o, shop);
+    spawnFloater(MAP.courtX, MAP.doorY+22, "BACK TO THE "+(shop?shop.name.toUpperCase():"SHOP"), "#ff9d8a");
+    game.flash=.55; game.flashCol=COL.red;
+    if(motionOn()){ game.shake=Math.min(1,game.shake+(game.stamp.big?.9:.35)); game.hitstop=game.stamp.big?.06:.02; }
+    Sound.bail();
+    say(`Bail granted. Case ${o.case} is walking back to the ${shop?shop.name:"same shop"}.`);
+  } else {
+    game.custody++;
+    o.state="custody";
+    // Points only in the bonus level. In the main levels the reward for CUSTODY
+    // is that this case stops coming back — which is worth more than points.
+    const got = (L.key==="bonus") ? applyConfidence(takeBonusRestore()) : 0;
+    showStamp("custody", o, shop);
+    if(got>0) spawnFloater(MAP.courtX, MAP.doorY+22, "CUSTODY +"+Math.round(got), "#8ff0c2");
+    else spawnFloater(MAP.courtX, MAP.doorY+22, "CUSTODY", "#8ff0c2");
+    game.flash=.22; game.flashCol=COL.green;
+    spawnParticles(MAP.courtX, MAP.courtY+30, COL.green, motionOn()?14:4, {spMin:40,spMax:150,lift:30});
+    Sound.custody();
+    say(`Custody. Case ${o.case} is held${got>0?`. Confidence up ${Math.round(got)}`:""}.`);
+  }
+  updateHUD();
+}
+function takeBonusRestore(){
+  const left = Math.max(0, BONUS.restoreCap - game.bonusRestored);
+  const amt = Math.min(BONUS.custodyRestore, left);
+  game.bonusRestored += amt;
+  return amt;
+}
+
+/* ---- the single shopfront-damage path ------------------------------------ */
+function resolveStrike(shop, o){
+  if(shop.state==="shuttered") return;
+  const L=activeDef();
+  shop.strikes++;
+  shop.state = shop.strikes>=2 ? "shuttered" : "reduced";
+  shop.crack=1; shop.crackSeed=rand(0,999);
+  if(motionOn()) shop.shake=1;
+  game.broken++;
+  const lost = -applyConfidence(-L.strikeCost);
+  const fx=shop.fx + (shop.side<0?-16:16), fy=shop.y;
+  game.flash=.4; game.flashCol=COL.red;
+  if(motionOn()){ game.shake=Math.min(1,game.shake+.6); game.hitstop=.045; }
+  spawnParticles(fx,fy,"#cfe4ff", motionOn()?18:5, {spMin:50,spMax:210,g:260,sq:true});
+  spawnFloater(fx, fy-34, "WINDOW −"+Math.round(lost), "#ff9d8a");
+  Sound.breakGlass();
+  renderShopChips();
+  if(shop.state==="shuttered"){
+    game.shuttered++;
+    Sound.shutter();
+    spawnFloater(fx, fy-52, "SHUTTERED", "#94A5BC");
+    retireShop(shop);
+    say(`The ${shop.name} has shuttered. ${Math.round(game.conf)} business confidence left.`);
+  } else {
+    say(`A window goes at the ${shop.name}. It cuts to reduced hours. ${Math.round(game.conf)} business confidence left.`);
+  }
+  checkLevelEnd();
+}
+/* A shuttered shop has nothing left to lose: its cases move on and the spawner
+   pushes the pressure onto whatever is still open. */
+function retireShop(shop){
+  for(const o of offenders){
+    if(o.shopId!==shop.id) continue;
+    if(o.state==="arrested"||o.state==="court"){ o.state="gone"; continue; }
+    if(ARRESTABLE.has(o.state)){
+      o.state="leaving"; o.wpi=0; o.fade=1;
+      const m = dist(lanes.L.mouth.x,lanes.L.mouth.y,o.x,o.y) < dist(lanes.R.mouth.x,lanes.R.mouth.y,o.x,o.y) ? lanes.L.mouth : lanes.R.mouth;
+      o.wp=[{x:m.x,y:m.y}]; o.speed=activeDef().speed*1.3;
+    }
+  }
+  game.spawnT = Math.min(game.spawnT, 0.6);
+}
+
+/* ---- the BAIL GRANTED / CUSTODY stamp ------------------------------------
+   The emotional centre of the suite. The first bail grant of each level lands
+   full-screen with a flash and a shake; the rest stamp compactly on the
+   courthouse so a busy level stays playable. */
+function showStamp(kind, o, shop){
+  const big = kind==="bail" && game.lvlBail<=1;
+  game.stamp = { kind, big, case:o.case, shop:shop?shop.name:"", t:0, dur:big?1.7:1.15 };
+}
+
+/* ============================================================================
+   10) FLOW / STATE TRANSITIONS
+   ========================================================================== */
+function goTitle(){
+  game.state="title"; hideAllScreens(); showScreen("title"); setHUD(false); setFooter(true);
+  buildStreet(LEVELS[0]); offenders=[]; resetPlayer(); camSnap(player.x,player.y);
+}
+function goHowTo(){ game.state="howto"; showScreen("howto"); setFooter(false); }
+function resetPlayer(){
+  player.x=WORLD.w/2; player.y=958; player.vx=0; player.vy=0; player.moveTo=null; player.face=-Math.PI/2;
+}
+function startRun(){
+  game.conf=100; game.levelIdx=0; game.lastPlayerId=null;
+  game.arrests=0; game.bail=0; game.custody=0; game.broken=0; game.shuttered=0;
+  game.bonusRestored=0; game.ledger=[]; caseSeq=0;
+  beginLevel(0);
+}
+function prepLevel(L){
+  resize();
+  particles.length=0; floaters.length=0; offenders=[]; game.stamp=null;
+  buildStreet(L); resetPlayer(); camSnap(player.x,player.y);
+  game.lvlBail=0; game.t=0; game.dur=L.duration; game.spawnT=0; game.timeScale=1;
+  game.shake=0; game.flash=0;
+  hideAllScreens(); setHUD(true); setFooter(false);
+  $("hud-level").textContent=L.name;
+  updateHUD(); renderShopChips();
+  Sound.level();
+}
+function beginLevel(idx){
+  game.levelIdx=idx; game.state="playing";
+  prepLevel(LEVELS[idx]);
+  say(`${LEVELS[idx].name}. ${LEVELS[idx].shops} shopfronts on your beat: ${shops.map(s=>s.name).join(", ")}. Walk over to an offender to catch them.`);
+}
+function beginBonus(){
+  game.state="bonus";
+  prepLevel(BONUS);
+  say(`${BONUS.name}. Every arrest sticks and every shopfront stays open.`);
+}
+function endLevel(){
+  if(game.state==="bonus") return finish();
+  const next=game.levelIdx+1;
+  showTransition(next<LEVELS.length ? next : "bonus");
+}
+function showTransition(target){
+  game.state="transition"; setHUD(false); hideAllScreens(); showScreen("transition");
+  const isBonus = target==="bonus";
+  const L = isBonus ? BONUS : LEVELS[target];
+  $("tr-eyebrow").textContent = isBonus ? "Bonus round" : "Level "+(target+1);
+  $("tr-name").textContent=L.name; $("tr-desc").textContent=L.desc;
+  $("tr-carry").textContent=Math.round(game.conf);
+  $("btn-transition").textContent = isBonus ? "See how it should work" : "Back on the beat";
+  game._pendingLevel=target;
+  say(`${L.name}. ${Math.round(game.conf)} of 100 business confidence still standing.`);
+}
+function startPending(){
+  if(game._pendingLevel==null) return;
+  const t=game._pendingLevel; game._pendingLevel=null;
+  if(t==="bonus") beginBonus(); else beginLevel(t);
+}
+function finish(){
+  game.state="results"; setHUD(false); setFooter(true); hideAllScreens();
+  renderResults(); showScreen("results");
+  if(game.conf>=70){ Sound.win(); game.confetti=motionOn()?2.2:0; } else Sound.lose();
+}
+function checkLevelEnd(){
+  const active = game.state==="playing"||game.state==="bonus";
+  if(!active) return;
+  // a level ends when its time is up, or when there is nothing left to protect
+  if(shops.length && shops.every(s=>s.state==="shuttered")){
+    say("Every shopfront on the beat is shuttered.");
+    endLevel();
+  }
+}
+function pauseGame(){ if(game.state!=="playing"&&game.state!=="bonus")return; game._resumeState=game.state; game.state="pause"; setHUD(false); showScreen("pause"); }
+function resumeGame(){ if(game.state!=="pause")return; game.state=game._resumeState||"playing"; hideAllScreens(); setHUD(true); }
+
+/* ============================================================================
+   11) INPUT — three co-equal P0 schemes, all feeding one movement axis:
+        - keyboard: WASD / arrow keys (also the whole game is keyboard-playable)
+        - mouse:    click or drag anywhere to walk there
+        - touch:    press and drag for a virtual joystick; a quick tap walks there
+   Plus F: head for the nearest offender (a motor-assist for players who can't
+   read the canvas — it does NOT choose for you, which is where the skill is).
+   ========================================================================== */
+const keys = new Set();
+const stick = { active:false, id:null, ox:0, oy:0, dx:0, dy:0, t0:0, moved:0 };
+const STICK_R = 46;
+
+function axisFromInput(){
+  let ax=0, ay=0;
+  if(keys.has("w")||keys.has("arrowup")) ay-=1;
+  if(keys.has("s")||keys.has("arrowdown")) ay+=1;
+  if(keys.has("a")||keys.has("arrowleft")) ax-=1;
+  if(keys.has("d")||keys.has("arrowright")) ax+=1;
+  if(ax||ay){ const m=Math.hypot(ax,ay); return {x:ax/m, y:ay/m}; }
+  if(stick.active && (stick.dx||stick.dy)){
+    const m=Math.hypot(stick.dx,stick.dy);
+    if(m>0.14){ const g=Math.min(1,m); return {x:stick.dx/m*g, y:stick.dy/m*g}; }
+    return {x:0,y:0};
+  }
+  if(player.moveTo){
+    const dx=player.moveTo.x-player.x, dy=player.moveTo.y-player.y, m=Math.hypot(dx,dy);
+    if(m<6){ player.moveTo=null; return {x:0,y:0}; }
+    const g=Math.min(1, m/28);                    // ease into the final few pixels
+    return {x:dx/m*g, y:dy/m*g};
+  }
+  return {x:0,y:0};
+}
+function walkTo(sx,sy){
+  const p=screenToWorld(sx,sy); clampWalk(p); player.moveTo=p;
+}
+function playing(){ return game.state==="playing"||game.state==="bonus"; }
+
+canvas.addEventListener("pointerdown", e=>{
+  Sound.init();
+  if(!playing()) return;
+  e.preventDefault(); canvas.setPointerCapture?.(e.pointerId);
+  const r=canvas.getBoundingClientRect(), sx=e.clientX-r.left, sy=e.clientY-r.top;
+  if(e.pointerType==="touch"){
+    stick.active=true; stick.id=e.pointerId; stick.ox=sx; stick.oy=sy;
+    stick.dx=0; stick.dy=0; stick.t0=performance.now(); stick.moved=0;
+    player.moveTo=null;
+  } else {
+    walkTo(sx,sy);
+  }
+});
+canvas.addEventListener("pointermove", e=>{
+  if(!playing()) return;
+  const r=canvas.getBoundingClientRect(), sx=e.clientX-r.left, sy=e.clientY-r.top;
+  if(stick.active && e.pointerId===stick.id){
+    const dx=sx-stick.ox, dy=sy-stick.oy;
+    stick.moved=Math.max(stick.moved, Math.hypot(dx,dy));
+    stick.dx=clamp(dx/STICK_R,-1,1); stick.dy=clamp(dy/STICK_R,-1,1);
+  } else if(e.pointerType!=="touch" && e.buttons&1){
+    walkTo(sx,sy);
+  }
+});
+function endStick(e){
+  if(!stick.active || e.pointerId!==stick.id) return;
+  const quick = performance.now()-stick.t0 < 220 && stick.moved < 12;
+  if(quick && playing()){
+    const r=canvas.getBoundingClientRect();
+    walkTo(e.clientX-r.left, e.clientY-r.top);     // tap-to-move
+  }
+  stick.active=false; stick.id=null; stick.dx=0; stick.dy=0;
+}
+canvas.addEventListener("pointerup", endStick);
+canvas.addEventListener("pointercancel", endStick);
+canvas.addEventListener("touchstart", e=>e.preventDefault(), {passive:false});
+
+function headForNearest(){
+  if(!playing()) return null;
+  let best=null, bd=Infinity;
+  for(const o of offenders){
+    if(!ARRESTABLE.has(o.state)) continue;
+    const d=dist(o.x,o.y,player.x,player.y); if(d<bd){ bd=d; best=o; }
+  }
+  if(!best) { say("No offender on the street right now."); return null; }
+  player.moveTo={x:best.x,y:best.y};
+  const s=shops[best.shopId];
+  say(`Heading for case ${best.case}${s?` near the ${s.name}`:""}.`);
+  return best;
+}
+
+window.addEventListener("keydown", e=>{
+  Sound.init();
+  const k=e.key.toLowerCase();
+  if(e.target && /^(input|textarea)$/i.test(e.target.tagName)) return;
+  if(["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) e.preventDefault();
+  if(k==="escape"){ if(playing()) pauseGame(); else if(game.state==="pause") resumeGame(); return; }
+  if(k==="enter" && game.state==="title"){ startRun(); return; }
+  if(k==="enter" && game.state==="transition"){ startPending(); return; }
+  if(k==="f" && playing()){ headForNearest(); return; }
+  if(["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(k)){
+    keys.add(k); player.moveTo=null;
+  }
+});
+window.addEventListener("keyup", e=>{ keys.delete(e.key.toLowerCase()); });
+window.addEventListener("blur", ()=>{ keys.clear(); stick.active=false; });
+
+/* ============================================================================
+   12) UPDATE
+   ========================================================================== */
+function update(dt){
+  updateParticles(dt); updateFloaters(dt);
+  if(game.shake>0) game.shake=Math.max(0,game.shake-dt*3.2);
+  if(game.flash>0) game.flash=Math.max(0,game.flash-dt*2.2);
+  if(player.flash>0) player.flash=Math.max(0,player.flash-dt*3);
+  if(game.stamp){ game.stamp.t+=dt; if(game.stamp.t>=game.stamp.dur) game.stamp=null; }
+  for(const s of shops){
+    if(s.crack>0) s.crack=Math.max(0,s.crack-dt*0.55);
+    if(s.shake>0) s.shake=Math.max(0,s.shake-dt*4);
+    s.flicker+=dt*(s.state==="reduced"?7:2);
+    s.threat=Math.max(0,s.threat-dt*2);
+  }
+  if(game.confetti>0){ game.confetti-=dt; if(motionOn()&&Math.random()<.5)
+    spawnParticles(rand(0,WORLD.w), cam.y-H/(2*camScale())-6, choice([COL.amber,COL.green,COL.blue]),1,{g:110,spMin:10,spMax:40,lift:-30}); }
+
+  if(!playing()){ updateCamera(dt); return; }
+
+  game.t += dt;
+  updateSpawner(dt);
+  updatePlayer(dt);
+  updateOffenders(dt);
+  updateCamera(dt);
+  updateHUD();
+  if(game.t>=game.dur) endLevel();
+}
+
+function updatePlayer(dt){
+  const a=axisFromInput();
+  const tvx=a.x*PLAYER.speed, tvy=a.y*PLAYER.speed;
+  const k=1-Math.exp(-dt*18);
+  player.vx=lerp(player.vx,tvx,k); player.vy=lerp(player.vy,tvy,k);
+  player.x+=player.vx*dt; player.y+=player.vy*dt;
+  clampWalk(player);
+  const sp=Math.hypot(player.vx,player.vy);
+  if(sp>6){ player.face=Math.atan2(player.vy,player.vx); player.phase+=dt*(4+sp/40); }
+}
+
+function updateOffenders(dt){
+  const L=activeDef();
+  for(let i=offenders.length-1;i>=0;i--){
+    const o=offenders[i];
+
+    if(o.state==="gone"){ offenders.splice(i,1); continue; }
+    if(o.state==="custody"){ continue; }                 // held — off the street for the level
+
+    if(o.state==="arrested"){
+      o.arrestT+=dt;
+      o.fade=1-clamp(o.arrestT/0.45,0,1);
+      if(o.arrestT>=0.7){ o.state="court"; o.courtMax=rand(L.courtMin,L.courtMax); o.courtT=o.courtMax; }
+      continue;
+    }
+    if(o.state==="court"){
+      o.courtT-=dt;
+      if(o.courtT<=0) resolveCase(o);
+      continue;
+    }
+    if(o.state==="leaving"){
+      o.fade=Math.max(0,o.fade-dt*0.9);
+      walkWaypoints(o,dt);
+      if(o.fade<=0.01) o.state="gone";
+      continue;
+    }
+
+    // arriving | loitering | returning ------------------------------------
+    o.fade=Math.min(1,o.fade+dt*3);
+    if(o.state==="returning"){
+      o.trailT-=dt;
+      if(o.trailT<=0){ o.trailT=0.11; o.trail.push({x:o.x,y:o.y}); if(o.trail.length>46) o.trail.shift(); }
+    } else if(o.trailFade>0){ o.trailFade=Math.max(0,o.trailFade-dt*0.5); }
+
+    const done=walkWaypoints(o,dt);
+    if(done && (o.state==="arriving"||o.state==="returning")){
+      const shop=shops[o.shopId];
+      if(!shop || shop.state==="shuttered"){ retireShop(shop||{id:o.shopId}); continue; }
+      if(o.state==="returning"){
+        spawnFloater(o.x, o.y-34, "BACK AT THE "+shop.name.toUpperCase(), "#ff9d8a");
+        say(`Case ${o.case} is back outside the ${shop.name}.`);
+      }
+      o.state="loitering"; o.wp=loiterCircuit(shop); o.wpi=0; o.pause=rand(.3,1);
+    } else if(done && o.state==="loitering"){
+      const shop=shops[o.shopId];
+      if(shop && shop.state!=="shuttered"){ o.wp=loiterCircuit(shop); o.wpi=0; o.pause=rand(.4,1.4); }
+    }
+
+    // --- loitering pressure: the Business Confidence layer ---------------
+    let near=null, nd=Infinity;
+    for(const s of shops){
+      if(s.state==="shuttered") continue;
+      const d=dist(o.x,o.y,s.fx,s.y); if(d<nd){ nd=d; near=s; }
+    }
+    if(near && nd<LOITER_R && !L.shopsImmune){
+      if(o.heatShop!==near.id){ o.heatShop=near.id; o.heat=0; }
+      const rate = o.returned ? L.bailHeatMult : 1;
+      const before=o.heat;
+      o.heat += dt*rate;
+      near.threat=Math.max(near.threat, o.heat/L.breakAt);
+      if(before < L.breakAt*0.68 && o.heat >= L.breakAt*0.68) Sound.warn();
+      if(o.heat>=L.breakAt){ o.heat=0; resolveStrike(near,o); }
+    } else {
+      o.heat=Math.max(0,o.heat-dt*HEAT_DECAY);
+    }
+
+    // --- interception: adjacency is the arrest, no contact, no force ------
+    if(ARRESTABLE.has(o.state) && dist(o.x,o.y,player.x,player.y) <= PLAYER.arrestR){
+      arrest(o);
+    }
+  }
+}
+
+/* ---- HUD sync ------------------------------------------------------------- */
+const ICON_LOCK='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>';
+const ICON_REVOLVE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.6"/><path d="M20 5v6h-6"/></svg>';
+function updateHUD(){
+  const v=Math.round(game.conf);
+  $("hud-conf").innerHTML=`${v}<small>/100</small>`;
+  const fill=$("hud-fill"); fill.style.width=game.conf+"%";
+  fill.classList.toggle("flash", game.conf<40);
+  $("hud-custody").innerHTML=ICON_LOCK+`<span>${game.custody}</span><span class="sr-only"> in custody</span>`;
+  $("hud-bail").innerHTML=ICON_REVOLVE+`<span>${game.bail}</span><span class="sr-only"> bail granted</span>`;
+  $("hud-progress").style.width=(clamp(game.t/Math.max(1,game.dur),0,1)*100)+"%";
+}
+const SHOP_STATE_TEXT={ open:"open", reduced:"reduced hours", shuttered:"shuttered" };
+function renderShopChips(){
+  const el=$("hud-shops"); el.innerHTML="";
+  for(const s of shops){
+    const d=document.createElement("span");
+    d.className="shop-chip "+s.state; d.setAttribute("role","listitem");
+    d.title=`${s.name}: ${SHOP_STATE_TEXT[s.state]}`;
+    d.innerHTML=`<i aria-hidden="true"></i><b>${esc(s.name)}</b><span class="sr-only">: ${SHOP_STATE_TEXT[s.state]}</span>`;
+    el.appendChild(d);
+  }
+}
+
+/* ============================================================================
+   13) RENDER
+   ========================================================================== */
+function roundRect(x,y,w,h,r){ w=Math.max(0,w); h=Math.max(0,h); r=Math.max(0,Math.min(r,w/2,h/2));
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  const showWorld=["title","playing","bonus","transition","pause"].includes(game.state);
+  ctx.save();
+  if(game.shake>0 && motionOn()){ const s=game.shake*6; ctx.translate(rand(-s,s),rand(-s,s)); }
+  // --- world space ---
+  ctx.save();
+  const S=camScale();
+  ctx.translate(VIEW_CX(),VIEW_CY()); ctx.scale(S,S); ctx.translate(-cam.x,-cam.y);
+  drawGround();
+  if(showWorld){
+    drawCourthouse();
+    for(const s of shops) drawShop(s);
+    drawStreetlights();
+    for(const o of offenders) drawTrail(o);
+    drawShopThreats();
+    drawPlayer();
+    for(const o of offenders) drawOffender(o);
+    drawCourtChips();
+    if(player.moveTo) drawMoveMarker();
+  }
+  drawParticles(); drawFloaters();
+  ctx.restore();
+  // --- screen space ---
+  if(showWorld) drawEdgeMarkers();
+  if(playing() && stick.active) drawStick();
+  ctx.restore();
+  if(game.stamp) drawStamp();
+  if(game.flash>0){
+    ctx.globalAlpha=game.flash*.42;
+    const g=ctx.createRadialGradient(W/2,H*.5,H*.08,W/2,H*.5,H*.78);
+    g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,game.flashCol);
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  }
+  drawVignette();
+}
+
+function drawGround(){
+  const hc=settings.contrast;
+  ctx.fillStyle=hc?"#05080F":"#0B111C"; ctx.fillRect(-2000,-2000,6000,6000);
+  // building blocks down both sides
+  ctx.fillStyle=hc?"#141C2C":COL.block;
+  ctx.fillRect(0,MAP.streetY0,MAP.streetX0,MAP.streetY1-MAP.streetY0);
+  ctx.fillRect(MAP.streetX1,MAP.streetY0,WORLD.w-MAP.streetX1,MAP.streetY1-MAP.streetY0);
+  // courthouse plaza
+  ctx.fillStyle=hc?"#101A26":"#151D2C"; ctx.fillRect(0,0,WORLD.w,MAP.streetY0);
+  // station block
+  ctx.fillStyle=hc?"#141C2C":COL.block; ctx.fillRect(0,MAP.streetY1,WORLD.w,WORLD.h-MAP.streetY1);
+  // the road
+  ctx.fillStyle=hc?"#0B1220":COL.road;
+  ctx.fillRect(MAP.streetX0,MAP.streetY0,MAP.streetX1-MAP.streetX0,MAP.streetY1-MAP.streetY0);
+  // footpaths
+  ctx.fillStyle=hc?"#16202F":COL.path;
+  ctx.fillRect(MAP.streetX0,MAP.streetY0,26,MAP.streetY1-MAP.streetY0);
+  ctx.fillRect(MAP.streetX1-26,MAP.streetY0,26,MAP.streetY1-MAP.streetY0);
+  // laneways carved through the blocks
+  for(const L of [lanes.L,lanes.R]){
+    if(!L) continue;
+    ctx.fillStyle=hc?"#0F1725":"#131A28"; ctx.fillRect(L.rect.x,L.rect.y,L.rect.w,L.rect.h);
+    ctx.strokeStyle="rgba(148,165,188,.10)"; ctx.lineWidth=1;
+    ctx.strokeRect(L.rect.x+.5,L.rect.y+.5,L.rect.w-1,L.rect.h-1);
+    ctx.fillStyle="rgba(148,165,188,.30)";
+    ctx.font="700 8px "+getSans(); ctx.textAlign="center";
+    ctx.save(); ctx.translate(L.mouth.x, L.y); ctx.rotate(L.mouth.x<WORLD.w/2?-Math.PI/2:Math.PI/2);
+    ctx.fillText("LANEWAY",0,3); ctx.restore();
+  }
+  // centre line
+  ctx.strokeStyle=hc?"rgba(207,220,236,.30)":"rgba(58,70,94,.85)";
+  ctx.lineWidth=3; ctx.setLineDash([18,20]);
+  ctx.beginPath(); ctx.moveTo(WORLD.w/2,MAP.streetY0+10); ctx.lineTo(WORLD.w/2,MAP.streetY1-10); ctx.stroke();
+  ctx.setLineDash([]);
+  // kerbs
+  ctx.strokeStyle="rgba(148,165,188,.16)"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(MAP.streetX0+26,MAP.streetY0); ctx.lineTo(MAP.streetX0+26,MAP.streetY1);
+  ctx.moveTo(MAP.streetX1-26,MAP.streetY0); ctx.lineTo(MAP.streetX1-26,MAP.streetY1); ctx.stroke();
+  // station — the officer's end of the beat
+  ctx.fillStyle=hc?"#0F1B2E":"#141F33";
+  roundRect(WORLD.w/2-100,MAP.stationY-4,200,WORLD.h-MAP.stationY,8); ctx.fill();
+  ctx.strokeStyle="rgba(76,143,232,.4)"; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle="rgba(143,192,255,.75)"; ctx.font="700 11px "+getSans(); ctx.textAlign="center";
+  ctx.fillText("STATION",WORLD.w/2,MAP.stationY+22);
+}
+
+function drawStreetlights(){
+  const hc=settings.contrast;
+  for(let y=MAP.streetY0+90; y<MAP.streetY1; y+=190){
+    for(const x of [MAP.streetX0+16, MAP.streetX1-16]){
+      const g=ctx.createRadialGradient(x,y,4,x,y,120);
+      g.addColorStop(0, hc?"rgba(255,192,102,.22)":"rgba(242,169,59,.16)");
+      g.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,120,0,TAU); ctx.fill();
+      ctx.fillStyle=COL.amberLite; ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.fill();
+    }
+  }
+}
+
+function drawCourthouse(){
+  const cx=MAP.courtX, cy=MAP.courtY;
+  ctx.save();
+  // steps
+  ctx.fillStyle="rgba(148,165,188,.13)"; roundRect(cx-80,cy+26,160,26,4); ctx.fill();
+  ctx.fillStyle="rgba(148,165,188,.09)"; roundRect(cx-92,cy+40,184,22,4); ctx.fill();
+  // body
+  ctx.fillStyle=COL.blockTop; roundRect(cx-72,cy-28,144,58,5); ctx.fill();
+  ctx.strokeStyle="rgba(148,165,188,.3)"; ctx.lineWidth=1.5; ctx.stroke();
+  // pediment
+  ctx.fillStyle=COL.blockTop; ctx.beginPath();
+  ctx.moveTo(cx-80,cy-28); ctx.lineTo(cx,cy-54); ctx.lineTo(cx+80,cy-28); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // columns
+  ctx.fillStyle="rgba(237,242,247,.16)";
+  for(let i=0;i<5;i++){ const x=cx-52+i*26; ctx.fillRect(x-3.5,cy-22,7,50); }
+  // door
+  ctx.fillStyle="rgba(242,169,59,.22)"; roundRect(cx-13,cy+2,26,28,3); ctx.fill();
+  ctx.strokeStyle="rgba(242,169,59,.5)"; ctx.lineWidth=1; ctx.stroke();
+  // label
+  ctx.fillStyle="rgba(148,165,188,.85)"; ctx.font="700 9.5px "+getSans(); ctx.textAlign="center";
+  ctx.fillText("COURTHOUSE",cx,cy-36);
+  // custody tally
+  if(game.custody>0){
+    const t="HELD "+game.custody;
+    ctx.font="700 9px "+getMono(); const w=ctx.measureText(t).width+16;
+    ctx.fillStyle="rgba(27,122,78,.85)"; roundRect(cx+80,cy+2,w,15,7.5); ctx.fill();
+    ctx.strokeStyle="rgba(79,209,139,.7)"; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle="#8ff0c2"; ctx.textAlign="center"; ctx.fillText(t,cx+80+w/2,cy+12.5);
+  }
+  ctx.restore();
+}
+
+/* Cases sitting at the courthouse, each with its own countdown ring. */
+function drawCourtChips(){
+  const q=offenders.filter(o=>o.state==="court");
+  q.forEach((o,i)=>{
+    const x=MAP.courtX + (i-(q.length-1)/2)*46, y=MAP.doorY+16;
+    const p=clamp(o.courtT/o.courtMax,0,1);
+    ctx.save();
+    ctx.fillStyle="rgba(16,22,35,.92)"; roundRect(x-21,y-8,42,16,8); ctx.fill();
+    ctx.strokeStyle=o.returned?"rgba(228,87,61,.8)":"rgba(148,165,188,.5)"; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle=COL.paper; ctx.font="700 8.5px "+getMono(); ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(o.case,x,y+.5); ctx.textBaseline="alphabetic";
+    ctx.strokeStyle="rgba(148,165,188,.22)"; ctx.lineWidth=2.4;
+    ctx.beginPath(); ctx.arc(x,y,14,0,TAU); ctx.stroke();
+    ctx.strokeStyle=COL.amber; ctx.lineCap="round";
+    ctx.beginPath(); ctx.arc(x,y,14,-Math.PI/2,-Math.PI/2+TAU*(1-p)); ctx.stroke();
+    ctx.restore();
+  });
+  // the arrest chip flying up to the courthouse
+  for(const o of offenders){
+    if(o.state!=="arrested"||!o.chipFrom) continue;
+    const p=easeOutCubic(clamp(o.arrestT/0.7,0,1));
+    const x=lerp(o.chipFrom.x,MAP.courtX,p), y=lerp(o.chipFrom.y,MAP.doorY+16,p)-Math.sin(p*Math.PI)*30;
+    ctx.save(); ctx.globalAlpha=.55+p*.45;
+    ctx.fillStyle="rgba(16,22,35,.95)"; roundRect(x-21,y-8,42,16,8); ctx.fill();
+    ctx.strokeStyle="rgba(143,192,255,.9)"; ctx.lineWidth=1.2; ctx.stroke();
+    ctx.fillStyle=COL.blueLite; ctx.font="700 8.5px "+getMono(); ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(o.case,x,y+.5); ctx.textBaseline="alphabetic"; ctx.restore();
+  }
+}
+
+function drawShop(s){
+  const hc=settings.contrast;
+  const y0=s.y-MAP.shopH/2;
+  const sx = s.shake>0 && motionOn() ? rand(-2,2)*s.shake : 0;
+  const U = u => s.side<0 ? u : WORLD.w-u;   // mirror the layout for the right side
+  const R = (u0,u1,ya,yb,r)=>{ const a=U(u0)+sx, b=U(u1)+sx; roundRect(Math.min(a,b),ya,Math.abs(b-a),yb-ya,r||0); };
+  const dim = s.state==="shuttered" ? 0 : s.state==="reduced" ? .42 : 1;
+  const flick = s.state==="reduced" ? (.72+.28*Math.sin(s.flicker)) : 1;
+
+  ctx.save();
+  // slab
+  ctx.fillStyle=hc?"#1B2537":COL.blockTop; R(2,MAP.blockW,y0,y0+MAP.shopH,6); ctx.fill();
+  ctx.strokeStyle="rgba(148,165,188,.16)"; ctx.lineWidth=1; ctx.stroke();
+
+  // window light pool spilling onto the footpath
+  if(dim>0){
+    const g=ctx.createRadialGradient(U(MAP.blockW)+sx,s.y,4,U(MAP.blockW)+sx,s.y,96);
+    g.addColorStop(0,`rgba(242,169,59,${.20*dim*flick})`); g.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(U(MAP.blockW)+sx,s.y,96,0,TAU); ctx.fill();
+  }
+  // window
+  ctx.fillStyle = dim>0 ? `rgba(242,169,59,${.30+.42*dim*flick})` : "rgba(20,26,40,.95)";
+  R(44,64,y0+24,y0+88,3); ctx.fill();
+  ctx.strokeStyle=dim>0?"rgba(255,210,132,.6)":"rgba(148,165,188,.24)"; ctx.lineWidth=1; ctx.stroke();
+
+  // shutter (stylised — a roller coming down, no realism)
+  if(s.state==="shuttered"){
+    ctx.save();
+    R(44,64,y0+24,y0+88,3); ctx.clip();
+    ctx.fillStyle="#2A3448"; ctx.fillRect(U(44)+sx-24,y0+24,48,64);
+    ctx.strokeStyle="rgba(148,165,188,.35)"; ctx.lineWidth=1;
+    for(let yy=y0+27; yy<y0+88; yy+=5){ ctx.beginPath(); ctx.moveTo(U(42)+sx,yy); ctx.lineTo(U(66)+sx,yy); ctx.stroke(); }
+    ctx.restore();
+  }
+  // cracked-glass PATTERN — a brief stylised beat, never realistic
+  if(s.crack>0 && s.state!=="shuttered"){
+    ctx.save(); R(44,64,y0+24,y0+88,3); ctx.clip();
+    ctx.globalAlpha=s.crack; ctx.strokeStyle="rgba(255,255,255,.9)"; ctx.lineWidth=1;
+    const cx=U(54)+sx, cy=s.y, sd=s.crackSeed;
+    for(let i=0;i<8;i++){
+      const a=(i/8)*TAU + Math.sin(sd+i)*.35;
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      let px=cx, py=cy;
+      for(let j=1;j<=3;j++){
+        const r=j*12, aa=a+Math.sin(sd+i*3+j)*.16;
+        px=cx+Math.cos(aa)*r; py=cy+Math.sin(aa)*r; ctx.lineTo(px,py);
+      }
+      ctx.stroke();
+    }
+    for(let ring=1;ring<=2;ring++){
+      ctx.beginPath();
+      for(let i=0;i<=8;i++){
+        const a=(i/8)*TAU + Math.sin(sd+i)*.35, r=ring*11+Math.sin(sd+i*2)*2.5;
+        const px=cx+Math.cos(a)*r, py=cy+Math.sin(a)*r;
+        i?ctx.lineTo(px,py):ctx.moveTo(px,py);
+      }
+      ctx.closePath(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // awning
+  ctx.fillStyle=dim>0?"rgba(242,169,59,.5)":"rgba(148,165,188,.18)";
+  R(64,MAP.blockW,y0+16,y0+96,2); ctx.fill();
+  ctx.save(); R(64,MAP.blockW,y0+16,y0+96,2); ctx.clip();
+  ctx.fillStyle="rgba(16,22,35,.45)";
+  for(let yy=y0+16; yy<y0+96; yy+=14){ ctx.fillRect(U(64)+sx-7,yy,15,7); }
+  ctx.restore();
+
+  // Blade sign + state label, set vertically along the block. The street is
+  // narrow by design (so the full width always fits the strip), which leaves no
+  // room for a horizontal sign — a blade sign is how a real shopfront solves
+  // exactly the same problem.
+  ctx.save();
+  ctx.translate(U(26)+sx, s.y);
+  ctx.rotate(s.side<0 ? -Math.PI/2 : Math.PI/2);
+  ctx.fillStyle="rgba(10,14,24,.8)"; roundRect(-46,-9,92,18,4); ctx.fill();
+  ctx.strokeStyle=dim>0?"rgba(255,210,132,.42)":"rgba(148,165,188,.22)"; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle=dim>0?COL.amberLite:"#63748e";
+  ctx.font="700 10px "+getSans(); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(s.name.toUpperCase(), 0, .5);
+  // state label — colour is never the only signal
+  const txt = s.state==="open" ? "OPEN" : s.state==="reduced" ? "REDUCED HOURS" : "SHUTTERED";
+  ctx.font="700 8px "+getSans();
+  ctx.fillStyle = s.state==="open" ? "rgba(255,210,132,.9)" : s.state==="reduced" ? "rgba(242,169,59,.95)" : "rgba(148,165,188,.75)";
+  ctx.fillText(txt, 0, 16);
+  ctx.restore();
+  ctx.textBaseline="alphabetic";
+  ctx.restore();
+}
+
+/* A pulsing ring on the footpath outside any shop that is being loitered at. */
+function drawShopThreats(){
+  const L=activeDef();
+  for(const s of shops){
+    if(s.state==="shuttered"||s.threat<=0.02) continue;
+    const p=clamp(s.threat,0,1);
+    const pulse=motionOn()? .5+.5*Math.sin(performance.now()/(150-p*90)) : 1;
+    ctx.save();
+    ctx.globalAlpha=.25+p*.5*pulse;
+    ctx.strokeStyle=p>.68?COL.red:COL.amber; ctx.lineWidth=2; ctx.setLineDash([5,6]);
+    ctx.beginPath(); ctx.arc(s.fx,s.y,44+p*8,0,TAU); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
+}
+
+/* The walk-back made legible: breadcrumbs behind a bail-granted offender plus a
+   dashed line to the exact shopfront it came from. */
+function drawTrail(o){
+  if(o.state!=="returning" && !(o.trailFade>0 && o.trail.length)) return;
+  const shop=shops[o.shopId]; if(!shop) return;
+  const alpha=o.state==="returning"?1:o.trailFade;
+  ctx.save();
+  ctx.globalAlpha=alpha*.5; ctx.strokeStyle=COL.red; ctx.lineWidth=2; ctx.lineCap="round";
+  ctx.beginPath();
+  o.trail.forEach((p,i)=>{ i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y); });
+  if(o.state==="returning") ctx.lineTo(o.x,o.y);
+  ctx.stroke();
+  if(o.state==="returning"){
+    ctx.globalAlpha=alpha*.34; ctx.setLineDash([4,7]); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(o.x,o.y); ctx.lineTo(shop.fx,shop.y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha=alpha*.75;
+    ctx.strokeStyle=COL.red; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(shop.fx,shop.y,26,0,TAU); ctx.stroke();
+    ctx.fillStyle="#ff9d8a"; ctx.font="700 8px "+getSans(); ctx.textAlign="center";
+    ctx.fillText("SAME SHOP", shop.fx, shop.y+40);
+  }
+  ctx.restore();
+}
+
+/* The faceless silhouette. One flat colour. No face, no features, no markers of
+   any kind — identity is the case-number chip and nothing else. */
+function drawFigure(x,y,fill,scale,phase,moving){
+  const bob = moving && motionOn() ? Math.abs(Math.sin(phase))*1.6 : 0;
+  const s=scale;
+  ctx.save(); ctx.translate(x,y-bob);
+  ctx.fillStyle="rgba(0,0,0,.45)";
+  ctx.beginPath(); ctx.ellipse(0,10*s,9*s,3.4*s,0,0,TAU); ctx.fill();
+  ctx.fillStyle=fill;
+  roundRect(-7.5*s,-8*s,15*s,18*s,5*s); ctx.fill();          // torso
+  ctx.beginPath(); ctx.arc(0,-12.5*s,5.4*s,0,TAU); ctx.fill(); // head — blank
+  ctx.strokeStyle="rgba(255,255,255,.12)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(-1.6*s,-13.6*s,4.4*s,Math.PI*.85,Math.PI*1.5); ctx.stroke();
+  ctx.restore();
+}
+function drawPlayer(){
+  const hc=settings.contrast;
+  // the officer's presence on the street
+  const g=ctx.createRadialGradient(player.x,player.y,4,player.x,player.y,PLAYER.arrestR*2.1);
+  g.addColorStop(0,`rgba(76,143,232,${hc?.22:.16})`); g.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER.arrestR*2.1,0,TAU); ctx.fill();
+  // reach ring — shows exactly where an arrest triggers
+  ctx.save();
+  ctx.globalAlpha=.28+player.flash*.5;
+  ctx.strokeStyle=COL.blueLite; ctx.lineWidth=1.4; ctx.setLineDash([4,5]);
+  ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER.arrestR,0,TAU); ctx.stroke();
+  ctx.setLineDash([]); ctx.restore();
+  if(player.flash>0){
+    ctx.save(); ctx.globalAlpha=player.flash*.8; ctx.strokeStyle=COL.blueLite; ctx.lineWidth=2.6;
+    ctx.beginPath(); ctx.arc(player.x,player.y,PLAYER.arrestR*(1+(1-player.flash)*1.1),0,TAU); ctx.stroke(); ctx.restore();
+  }
+  drawFigure(player.x,player.y,COL.blueDeep,1.16,player.phase,Math.hypot(player.vx,player.vy)>6);
+  ctx.save(); ctx.translate(player.x,player.y);
+  // hi-vis shoulders
+  ctx.fillStyle=COL.blue; roundRect(-8.7,-8.4,17.4,6.4,3); ctx.fill();
+  // badge — the officer's only marking
+  ctx.fillStyle=COL.blueLite;
+  ctx.beginPath();
+  for(let i=0;i<5;i++){
+    const a=-Math.PI/2+i*TAU/5, a2=a+TAU/10;
+    ctx.lineTo(Math.cos(a)*4, 1+Math.sin(a)*4); ctx.lineTo(Math.cos(a2)*1.8, 1+Math.sin(a2)*1.8);
+  }
+  ctx.closePath(); ctx.fill();
+  // facing nub
+  ctx.rotate(player.face);
+  ctx.fillStyle="rgba(143,192,255,.9)"; ctx.beginPath();
+  ctx.moveTo(11,0); ctx.lineTo(6.5,-3.4); ctx.lineTo(6.5,3.4); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function drawOffender(o){
+  if(o.state==="court"||o.state==="custody"||o.state==="gone") return;
+  if(o.fade<=0.01) return;
+  const L=activeDef();
+  ctx.save(); ctx.globalAlpha=o.fade;
+  drawFigure(o.x,o.y,COL.silhouette,1,o.phase, o.state!=="loitering"||o.pause<=0);
+  // heat ring — how close this one is to costing a shopfront its window
+  if(o.heat>0.12 && !L.shopsImmune){
+    const p=clamp(o.heat/L.breakAt,0,1);
+    ctx.strokeStyle="rgba(148,165,188,.22)"; ctx.lineWidth=2.4;
+    ctx.beginPath(); ctx.arc(o.x,o.y-2,19,0,TAU); ctx.stroke();
+    ctx.strokeStyle=p>.68?COL.red:COL.amber; ctx.lineCap="round";
+    ctx.beginPath(); ctx.arc(o.x,o.y-2,19,-Math.PI/2,-Math.PI/2+TAU*p); ctx.stroke();
+  }
+  // the case chip — the ONLY identifier this figure ever carries
+  const chipY=o.y-26;
+  ctx.font="700 8px "+getMono();
+  const tw=ctx.measureText(o.case).width, w=tw+(o.returned?21:12), h=13;
+  ctx.fillStyle="rgba(16,22,35,.92)"; roundRect(o.x-w/2,chipY-h/2,w,h,6.5); ctx.fill();
+  ctx.strokeStyle=o.returned?"rgba(228,87,61,.95)":"rgba(148,165,188,.45)"; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle=o.returned?"#ff9d8a":COL.dim; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(o.case, o.x+(o.returned?4:0), chipY+.5);
+  if(o.returned){   // a revolving arrow: this one has already been through the door
+    ctx.save(); ctx.translate(o.x-w/2+7, chipY); ctx.scale(.36,.36);
+    ctx.strokeStyle="#ff9d8a"; ctx.lineWidth=5; ctx.lineCap="round";
+    ctx.beginPath(); ctx.arc(0,0,9,-.6,4.4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(9,-9); ctx.lineTo(9,0); ctx.lineTo(2,0); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.textBaseline="alphabetic";
+  ctx.restore();
+}
+function drawMoveMarker(){
+  const t=performance.now()/220;
+  ctx.save(); ctx.globalAlpha=.55; ctx.strokeStyle=COL.blueLite; ctx.lineWidth=1.6;
+  const r=6+ (motionOn()? (Math.sin(t)*0.5+0.5)*4 : 2);
+  ctx.beginPath(); ctx.arc(player.moveTo.x,player.moveTo.y,r,0,TAU); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(player.moveTo.x-9,player.moveTo.y); ctx.lineTo(player.moveTo.x+9,player.moveTo.y);
+  ctx.moveTo(player.moveTo.x,player.moveTo.y-9); ctx.lineTo(player.moveTo.x,player.moveTo.y+9); ctx.stroke();
+  ctx.restore();
+}
+/* Off-screen shopfronts that are under pressure get a chevron at the edge, so
+   the routing decision stays complete even when the camera can't show it all. */
+function drawEdgeMarkers(){
+  for(const s of shops){
+    if(s.state==="shuttered"||s.threat<=0.12) continue;
+    const p=worldToScreen(s.fx,s.y);
+    const m=26, top=m+(INTERNAL_DRAFT?18:0);
+    if(p.x>m && p.x<W-m && p.y>top && p.y<H-m) continue;
+    const x=clamp(p.x,m,W-m), y=clamp(p.y,top,H-m);
+    const a=Math.atan2(p.y-y,p.x-x);
+    ctx.save(); ctx.translate(x,y);
+    ctx.globalAlpha=.9;
+    ctx.fillStyle= s.threat>.68 ? COL.red : COL.amber;
+    ctx.save(); ctx.rotate(a); ctx.beginPath();
+    ctx.moveTo(11,0); ctx.lineTo(-4,-7); ctx.lineTo(-4,7); ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.font="700 8px "+getSans(); ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillStyle="rgba(16,22,35,.9)"; const t=s.name.toUpperCase(), tw=ctx.measureText(t).width+10;
+    roundRect(-tw/2, 10, tw, 13, 6.5); ctx.fill();
+    ctx.fillStyle= s.threat>.68 ? "#ff9d8a" : COL.amberLite; ctx.fillText(t,0,17);
+    ctx.textBaseline="alphabetic";
+    ctx.restore();
+  }
+}
+function drawStick(){
+  ctx.save();
+  ctx.globalAlpha=.5;
+  ctx.strokeStyle=COL.blueLite; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(stick.ox,stick.oy,STICK_R,0,TAU); ctx.stroke();
+  ctx.fillStyle="rgba(76,143,232,.16)"; ctx.fill();
+  const kx=stick.ox+stick.dx*STICK_R, ky=stick.oy+stick.dy*STICK_R;
+  ctx.globalAlpha=.85; ctx.fillStyle=COL.blue;
+  ctx.beginPath(); ctx.arc(kx,ky,18,0,TAU); ctx.fill();
+  ctx.strokeStyle=COL.blueLite; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.restore();
+}
+
+/* The rubber stamp. This is the beat the whole suite exists to deliver. */
+function drawStamp(){
+  const st=game.stamp;
+  const isBail = st.kind==="bail";
+  const inT=clamp(st.t/0.16,0,1), outT=clamp((st.dur-st.t)/0.35,0,1);
+  const pop = motionOn() ? 1+0.7*(1-easeOutCubic(inT)) : 1;
+  const anchor = st.big ? {x:W/2, y:H*0.42} : worldToScreen(MAP.courtX, MAP.courtY+8);
+  const scale = (st.big?1:0.58) * pop * (st.big?Math.min(1,W/430):1);
+  ctx.save();
+  ctx.globalAlpha=Math.min(1,outT)*0.95;
+  ctx.translate(anchor.x, anchor.y);
+  ctx.rotate(-0.13); ctx.scale(scale,scale);
+  const w=250, h=isBail?92:80;
+  const col = isBail?COL.red:COL.green;
+  ctx.fillStyle = isBail?"rgba(143,44,28,.24)":"rgba(27,122,78,.24)";
+  roundRect(-w/2,-h/2,w,h,7); ctx.fill();
+  ctx.strokeStyle=col; ctx.lineWidth=5; roundRect(-w/2,-h/2,w,h,7); ctx.stroke();
+  ctx.lineWidth=1.6; roundRect(-w/2+8,-h/2+8,w-16,h-16,4); ctx.stroke();
+  ctx.fillStyle=col; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.font="800 30px "+getSans();
+  ctx.fillText(isBail?"BAIL GRANTED":"CUSTODY", 0, isBail?-12:-8);
+  ctx.font="700 11px "+getMono();
+  ctx.fillText(`CASE ${st.case}${st.shop?" · "+st.shop.toUpperCase():""}`, 0, isBail?14:14);
+  if(isBail){
+    ctx.font="700 8.5px "+getSans();
+    ctx.fillText("RELEASED TO THE SAME STREET", 0, 31);
+  }
+  // icon: revolving arrow (bail) / padlock (custody)
+  ctx.save(); ctx.translate(-w/2+22, -h/2+20); ctx.scale(.9,.9);
+  ctx.strokeStyle=col; ctx.lineWidth=2.4; ctx.lineCap="round"; ctx.lineJoin="round";
+  if(isBail){
+    ctx.beginPath(); ctx.arc(0,0,7,-.5,4.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(7,-8); ctx.lineTo(7,0); ctx.lineTo(0,0); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(0,-3,4,Math.PI,0); ctx.stroke();
+    ctx.fillStyle=col; roundRect(-6,-2,12,10,2); ctx.fill();
+  }
+  ctx.restore();
+  ctx.textBaseline="alphabetic";
+  ctx.restore();
+}
+
+function drawVignette(){
+  const g=ctx.createRadialGradient(W/2,H/2,H*.34,W/2,H/2,H*.84);
+  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,.46)");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+
+/* ============================================================================
+   14) MAIN LOOP (fixed timestep)
+   ========================================================================== */
+new ResizeObserver(resize).observe($("field"));
+window.addEventListener("resize",resize);
+resize();
+
+let last=performance.now(), acc=0; const STEP=1/60;
+function frame(t){
+  if(canvas.clientWidth!==W||canvas.clientHeight!==H){ resize(); }
+  let dt=(t-last)/1000; last=t; if(dt>0.1)dt=0.1;
+  if(game.hitstop>0){ game.hitstop-=dt; }
+  else { acc+=dt*game.timeScale; let n=0; while(acc>=STEP && n<5){ update(STEP); acc-=STEP; n++; } if(acc>STEP*5)acc=0; }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================================
+   15) RESULTS + LEADERBOARD
+   ========================================================================== */
+function verdictFor(score){
+  if(score>=90) return "You held the whole street. Every shopfront still open at knock-off.";
+  if(score>=70) return "A good shift — but the same case numbers kept walking back.";
+  if(score>=45) return "You caught plenty. The courthouse kept sending them back faster.";
+  if(score>0)   return "You never stopped moving, and the street shuttered around you anyway.";
+  return "Every shopfront on your beat is shuttered. The cases are still open.";
+}
+function renderResults(){
+  const score=Math.round(game.conf);
+  const el=$("res-score"); const dur=motionOn()?750:0, t0=performance.now();
+  (function tick(now){
+    const p=dur?clamp((now-t0)/dur,0,1):1;
+    el.textContent=Math.round(easeOutCubic(p)*score);
+    if(p<1) requestAnimationFrame(tick);
+  })(t0);
+  $("res-verdict").textContent=verdictFor(score);
+  $("res-arrests").textContent=game.arrests;
+  $("res-ratio").innerHTML=`<span class="cus">${game.custody}</span><span class="sep"> : </span><span class="bai">${game.bail}</span>`;
+  $("res-shut").textContent=game.shuttered;
+  const c=CONTENT.citation, b=CONTENT.businessCitation;
+  $("res-citation").innerHTML =
+    `<span class="pending">${esc(c.figure)}</span> ${esc(c.framing)}` +
+    `<span class="src">Source: ${esc(c.source)} · ${esc(c.date)}</span>`;
+  $("res-citation2").innerHTML =
+    `<span class="pending">${esc(b.figure)}</span> ${esc(b.framing)}` +
+    `<span class="src">Source: ${esc(b.source)} · ${esc(b.date)}</span>`;
+  $("res-disclaimer").innerHTML="<strong>Disclaimer.</strong> "+esc(CONTENT.disclaimer);
+  say(`Shift over. ${score} of 100 business confidence held. ${game.arrests} arrests: ${game.custody} held in custody, ${game.bail} bail granted. ${game.shuttered} shopfronts shuttered.`);
+}
+
+/* ---- Leaderboard store: LOCAL now, REMOTE (Cloudflare) later --------------
+   Swap point for launch: implement RemoteLeaderboard against a serverless
+   endpoint (Cloudflare Pages Function + D1) and flip USE_REMOTE. PII stays
+   server-side there; this local store keeps data on-device only (demo/fallback).
+   The public row is first name + postcode + score. Last name and email are
+   stored as private `_`-prefixed fields and never rendered.
+   -------------------------------------------------------------------------- */
+const USE_REMOTE=false;
+const LocalLeaderboard={
+  KEY:"cr_patrol_lb_v1",
+  all(){ return store.get(this.KEY,[]) || []; },
+  async top(n=10){ return this.all().slice(0,n); },
+  async submit(entry){
+    const list=this.all();
+    const rec={ id:(performance.now()+"_"+Math.random()).toString(),
+      first:entry.first, postcode:entry.postcode, score:entry.score, ts:Date.now(),
+      _last:entry.last, _email:entry.email };   // private fields — on-device only here
+    list.push(rec); list.sort((a,b)=>b.score-a.score);
+    const rank=list.findIndex(r=>r.id===rec.id)+1;
+    store.set(this.KEY, list.slice(0,100));
+    return { rank, id:rec.id, total:list.length };
+  },
+};
+const Leaderboard = USE_REMOTE ? null /* RemoteLeaderboard (launch) */ : LocalLeaderboard;
+
+async function renderLeaderboard(){
+  const rows=await Leaderboard.top(10);
+  const list=$("lb-list"); list.innerHTML="";
+  if(!rows.length){ list.innerHTML='<div class="lb-empty">No scores yet — you could be first.</div>'; }
+  rows.forEach((r,i)=>{
+    const div=document.createElement("div");
+    div.className="lb-row"+(r.id===game.lastPlayerId?" me":"");
+    div.innerHTML=`<span class="rank">${i+1}</span>`+
+      `<span class="who">${esc(r.first||"Player")}<small>Postcode ${esc(r.postcode||"—")}</small></span>`+
+      `<span class="sc">${Math.round(r.score)}</span>`;
+    list.appendChild(div);
+  });
+  $("lb-note").textContent = USE_REMOTE ? "" :
+    "Scores are saved on this device (demo mode). A shared board is enabled at launch.";
+}
+
+/* ============================================================================
+   16) UI WIRING
+   ========================================================================== */
+document.documentElement.setAttribute("data-draft", INTERNAL_DRAFT ? "on" : "off");
+$("framing-fact").textContent=CONTENT.framingFact;
+$("framing-plan").textContent=CONTENT.framingPlan;
+$("foot-auth").textContent=CONTENT.authorisation;
+$("foot-disclaimer").textContent=CONTENT.disclaimer;
+$("form-privacy").textContent=CONTENT.privacy;
+$("consent-label").textContent=CONTENT.consentLabel;
+$("btn-donate").href=CONTENT.donateUrl; $("btn-donate2").href=CONTENT.donateUrl;
+$("btn-policy").href=CONTENT.policyUrl; $("btn-policy2").href=CONTENT.policyUrl;
+
+// how-to legend icons
+$("lg-move").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3 9 6m3-3 3 3M12 21l-3-3m3 3 3-3M3 12l3-3m-3 3 3 3M21 12l-3-3m3 3-3 3"/></svg>';
+$("lg-catch").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg>';
+$("lg-bail").innerHTML=ICON_REVOLVE;
+$("lg-custody").innerHTML=ICON_LOCK;
+$("lg-conf").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h18l-1.5-4.5h-15z"/><path d="M4.5 9v11h15V9"/><path d="M9 20v-6h6v6"/></svg>';
+
+$("btn-play").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-how").onclick=goHowTo;
+$("btn-how-start").onclick=()=>{ Sound.init(); startRun(); };
+$("btn-transition").onclick=startPending;
+$("btn-resume").onclick=resumeGame;
+$("btn-restart").onclick=()=>{ hideAllScreens(); startRun(); };
+$("t-pause").onclick=()=>{ game.state==="pause"?resumeGame():pauseGame(); };
+$("btn-replay").onclick=startRun;
+$("btn-replay2").onclick=startRun;
+$("btn-leaderboard").onclick=()=>{ game.state="form"; hideAllScreens(); showScreen("form"); setFooter(false); $("f-first").focus(); };
+$("btn-skip").onclick=async()=>{ game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true); };
+
+$("btn-share").onclick=async()=>{
+  const score=Math.round(game.conf); const text=CONTENT.shareText(score);
+  const url=location.href.split("#")[0];
+  try{
+    if(navigator.share){ await navigator.share({title:"Catch and Release — Beat Patrol",text,url}); }
+    else { await navigator.clipboard.writeText(text+" "+url); toast("Link copied"); }
+  }catch{}
+};
+
+$("lead-form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const first=$("f-first").value.trim(), last=$("f-last").value.trim(),
+        email=$("f-email").value.trim(), postcode=$("f-postcode").value.trim(),
+        consent=$("f-consent").checked, hp=$("f-website").value;
+  let ok=true;
+  const setErr=(id,inp,msg)=>{ $(id).textContent=msg||""; if(inp) $(inp).setAttribute("aria-invalid", msg?"true":"false"); if(msg)ok=false; };
+  setErr("e-first","f-first", first?"":"Enter your first name");
+  setErr("e-last","f-last", last?"":"Enter your last name");
+  setErr("e-email","f-email", /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?"":"Enter a valid email");
+  setErr("e-postcode","f-postcode", /^\d{4}$/.test(postcode)?"":"Enter a 4-digit postcode");
+  setErr("e-consent",null, consent?"":"Please tick to continue");
+  if(hp) return;
+  if(!ok) return;
+  const res=await Leaderboard.submit({first,last,email,postcode,score:Math.round(game.conf)});
+  game.lastPlayerId=res.id;
+  game.state="leaderboard"; await renderLeaderboard(); hideAllScreens(); showScreen("leaderboard"); setFooter(true);
+  say(`You ranked number ${res.rank} of ${res.total}.`);
+});
+
+function toast(msg){
+  const t=document.createElement("div"); t.textContent=msg;
+  t.style.cssText="position:absolute;left:50%;bottom:80px;transform:translateX(-50%);z-index:20;"+
+    "background:rgba(16,22,35,.95);border:1px solid var(--card-brd);color:var(--paper);"+
+    "padding:10px 16px;border-radius:10px;font:600 13px var(--font)";
+  $("field").appendChild(t); setTimeout(()=>t.remove(),1600);
+}
+
+/* ---- Toggles -------------------------------------------------------------- */
+const ICONS={
+  soundOn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"/></svg>',
+  soundOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 5m0-5-5 5"/></svg>',
+  motion:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+  contrast:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+};
+function applyToggles(){
+  document.documentElement.setAttribute("data-motion", settings.motion);
+  document.documentElement.setAttribute("data-contrast", settings.contrast?"on":"off");
+  const s=$("t-sound"); s.innerHTML=settings.sound?ICONS.soundOn:ICONS.soundOff;
+  s.setAttribute("aria-pressed",settings.sound); s.title="Sound ("+(settings.sound?"on":"off")+")";
+  const m=$("t-motion"); m.innerHTML=ICONS.motion; m.setAttribute("aria-pressed", settings.motion==="off"); m.title=(motionOn()?"Reduce motion":"Motion reduced");
+  const c=$("t-contrast"); c.innerHTML=ICONS.contrast; c.setAttribute("aria-pressed",settings.contrast); c.title="High contrast ("+(settings.contrast?"on":"off")+")";
+  $("t-pause").innerHTML=ICONS.pause;
+}
+$("t-sound").onclick=()=>{ settings.sound=!settings.sound; store.set("cr_sound",settings.sound); if(settings.sound){Sound.init();Sound.custody();} applyToggles(); };
+$("t-motion").onclick=()=>{ settings.motion=motionOn()?"off":"on"; store.set("cr_motion",settings.motion); applyToggles(); };
+$("t-contrast").onclick=()=>{ settings.contrast=!settings.contrast; store.set("cr_contrast",settings.contrast); applyToggles(); };
+applyToggles();
+
+/* ============================================================================
+   16b) TEST HOOK — inert in production; only active with ?debug or #debug.
+   Every pilot drives the REAL update loop through the REAL input path
+   (player.moveTo) and the REAL scoring functions (resolveCase / resolveStrike /
+   applyConfidence). No pilot writes the score.
+   ========================================================================== */
+if(new URLSearchParams(location.search).has("debug") || location.hash==="#debug"){
+  const bot = { target:null, cool:0 };
+
+  /* urgency = seconds until this case costs a shopfront its window */
+  function urgency(o){
+    const L=activeDef(); const s=shops[o.shopId];
+    if(!s || s.state==="shuttered") return 999;
+    const rate = o.returned ? L.bailHeatMult : 1;
+    const d = dist(o.x,o.y,s.fx,s.y);
+    if(d < LOITER_R) return (L.breakAt-o.heat)/rate;
+    return (d-LOITER_R)/Math.max(1,o.speed) + L.breakAt/rate;
+  }
+  function botThink(mode,dt){
+    if(mode==="idle") return;
+    const live=offenders.filter(o=>ARRESTABLE.has(o.state));
+    bot.cool-=dt;
+    if(mode==="worst"){
+      // Actively make the worst routing decision available: never intercept
+      // anyone, ever. A repulsion field rather than pathing to a far grid
+      // point — pathing only scores the DESTINATION, so the officer would walk
+      // straight past a case on the way and arrest it by accident, which in the
+      // bonus level is worth points and floors the run above zero.
+      if(!live.length){ player.moveTo=null; return; }
+      let rx=0, ry=0;
+      for(const o of live){
+        const dx=player.x-o.x, dy=player.y-o.y;
+        const d2=Math.max(400, dx*dx+dy*dy);
+        rx += dx/d2; ry += dy/d2;
+      }
+      const m=Math.hypot(rx,ry);
+      if(m<1e-6){ player.moveTo=null; return; }
+      player.moveTo=clampWalk({ x:player.x+(rx/m)*260, y:player.y+(ry/m)*260 });
+      return;
+    }
+    if(mode==="nearest"){
+      // a casual player: same legs as "perfect", but always chases whoever is
+      // CLOSEST instead of whoever is about to cost a shopfront its window.
+      // Isolates the routing/prioritisation skill — the whole point of the game.
+      if(!live.length){ player.moveTo=null; return; }
+      let best=null, bd=Infinity;
+      for(const o of live){ const d=dist(o.x,o.y,player.x,player.y); if(d<bd){ bd=d; best=o; } }
+      if(best) player.moveTo={x:best.x,y:best.y};
+      return;
+    }
+    // perfect: TRIAGE EMERGENCIES, OTHERWISE MAXIMISE THROUGHPUT.
+    // Measured the two obvious rules and both lose to plain "go to the nearest":
+    //   - min urgency chases the soonest deadline even when it is across the
+    //     map and already lost, wasting the trip and dropping everything else;
+    //   - min slack (deadline - travel) is worse still — it actively selects
+    //     whichever case is furthest BEYOND saving.
+    // The reason nearest is so strong is structural: every arrest, even of a
+    // cold case, takes that offender off the street for the whole court +
+    // walk-back cycle. So arrests-per-minute is what protects the street, and
+    // walking further per arrest is what costs it. The winning policy is
+    // therefore: if something is genuinely about to go and I can still get
+    // there, go; otherwise take the nearest and keep the queue moving.
+    if(!live.length){ player.moveTo=null; bot.target=null; return; }
+    const travel = o => dist(o.x,o.y,player.x,player.y)/PLAYER.speed;
+    const pick = () => {
+      let em=null, es=Infinity;
+      for(const o of live){
+        const u=urgency(o);
+        if(u > 3.0) continue;                    // not an emergency yet
+        if(u - travel(o) < 0.15) continue;       // can't make it — don't waste the trip
+        if(u < es){ es=u; em=o; }
+      }
+      if(em) return em;
+      let near=null, nd=Infinity;
+      for(const o of live){ const d=travel(o); if(d<nd){ nd=d; near=o; } }
+      return near;
+    };
+    if(bot.cool<=0 || !bot.target || !live.includes(bot.target)){ bot.cool=0.12; bot.target=pick(); }
+    if(bot.target) player.moveTo={ x:bot.target.x, y:bot.target.y };
+  }
+  function summary(steps){
+    const l=game.ledger;
+    return {
+      state:game.state, score:Math.round(game.conf),
+      arrests:game.arrests, custody:game.custody, bail:game.bail,
+      broken:game.broken, shuttered:game.shuttered,
+      returns:l.filter(r=>r.outcome==="bail").length,
+      returnsToOriginShop:l.filter(r=>r.outcome==="bail" && r.destId===r.originId).length,
+      steps, seconds:+(steps/60).toFixed(1),
+    };
+  }
+  function runBot(mode, maxSteps=90000){
+    startRun(); bot.target=null; bot.cool=0;
+    let n=0;
+    while(game.state!=="results" && n<maxSteps){
+      if(game.state==="transition"){ startPending(); continue; }
+      if(game.state!=="playing" && game.state!=="bonus") break;
+      botThink(mode, STEP);
+      update(STEP); n++;
+    }
+    return summary(n);
+  }
+
+  window.__patrol = {
+    game, player, lanes, LEVELS, BONUS, CONTENT, WORLD, PLAYER, LOITER_R,
+    // getters, not references: buildStreet/prepLevel REBIND these arrays each
+    // level, so a captured reference would go stale after the first transition
+    get shops(){ return shops; },
+    get offenders(){ return offenders; },
+    step(dt=STEP){ update(dt); render(); },
+    steps(n=60,dt=STEP){ for(let i=0;i<n;i++) update(dt); render(); },
+    play(){ startRun(); },
+    /* drive the real input path by hand */
+    moveTo(x,y){ player.moveTo=clampWalk({x,y}); },
+    nearest(){ return headForNearest(); },
+    /* force a courthouse outcome deterministically, through the real path */
+    forceCourt(kind){
+      const o=offenders.find(o=>o.state==="court"); if(!o) return null;
+      resolveCase(o, kind); return { case:o.case, kind };
+    },
+    /* the acceptance criterion this game exists for: does a bail-granted
+       offender walk back to the SAME shopfront it was taken from? */
+    originReport(){
+      const l=game.ledger;
+      const bails=l.filter(r=>r.outcome==="bail");
+      return {
+        outcomes:l.length, bail:bails.length, custody:l.filter(r=>r.outcome==="custody").length,
+        returnsToOriginShop:bails.filter(r=>r.destId===r.originId).length,
+        mismatches:bails.filter(r=>r.destId!==r.originId),
+        byLevel:[...new Set(l.map(r=>r.level))].map(lv=>({
+          level:lv,
+          bail:bails.filter(r=>r.level===lv).length,
+          sameShop:bails.filter(r=>r.level===lv && r.destId===r.originId).length,
+        })),
+        ledger:l,
+      };
+    },
+    /* live offenders: origin shop vs. where they are actually walking */
+    walkBack(){
+      return offenders.filter(o=>o.state==="returning").map(o=>({
+        case:o.case, originShop:shops[o.shopId]?.name, originId:o.shopId,
+        destShop:shops[o.shopId]?.name, destId:o.shopId,
+        heading:{x:Math.round(o.wp[o.wp.length-1].x), y:Math.round(o.wp[o.wp.length-1].y)},
+        shopFront:{x:shops[o.shopId]?.fx, y:shops[o.shopId]?.y},
+        bailCount:o.bailCount,
+      }));
+    },
+    /* pilots — all run through the real loop, input path and scoring path */
+    autopilot(){ return runBot("perfect"); },   // expect score 100
+    failpilot(){ return runBot("worst"); },     // expect score 0
+    idlepilot(){ return runBot("idle"); },      // never inputs at all
+    /* tuning harness: "perfect" | "nearest" | "worst" | "idle", n runs, no render */
+    sim(mode="nearest", n=5){
+      const s=[]; for(let i=0;i<n;i++) s.push(runBot(mode).score);
+      const avg=s.reduce((a,b)=>a+b,0)/s.length;
+      return { mode, runs:n, scores:s, avg:+avg.toFixed(1), min:Math.min(...s), max:Math.max(...s) };
+    },
+  };
+}
+
+/* ============================================================================
+   17) BOOT / LOADING
+   ========================================================================== */
+(function boot(){
+  const bar=$("load-bar"); let p=0;
+  const iv=setInterval(()=>{ p=Math.min(100,p+rand(14,30)); bar.style.width=p+"%";
+    if(p>=100){ clearInterval(iv); setTimeout(goTitle, 260); }
+  }, 130);
+})();
+</script>
+</body>
+</html>
